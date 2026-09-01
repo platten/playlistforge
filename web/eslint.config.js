@@ -5,7 +5,7 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["coverage", "../internal/webui/dist"] },
+  { ignores: ["coverage", "wailsjs", "../internal/webui/dist"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

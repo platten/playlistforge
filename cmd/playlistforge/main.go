@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"syscall"
@@ -19,13 +18,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"playlistforge/internal/app"
-	"playlistforge/internal/credentials"
+	"playlistforge/internal/bootstrap"
 	"playlistforge/internal/httpapi"
-	"playlistforge/internal/logging"
-	"playlistforge/internal/openaiapi"
-	"playlistforge/internal/soundiiz"
-	"playlistforge/internal/storage"
 )
 
 const defaultPort = 8787
@@ -55,30 +49,14 @@ func run(args []string) (runErr error) {
 	if *host != defaultHost && *host != "0.0.0.0" {
 		return errors.New("host must be 127.0.0.1 or 0.0.0.0")
 	}
-	logger, err := logging.New(*logFormat, *logLevel)
-	if err != nil {
-		return fmt.Errorf("configure logging: %w", err)
-	}
-	defer func() { _ = logger.Sync() }()
-	configDir, err := resolveConfigDir(*configPath)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(configDir, 0o700); err != nil {
-		return fmt.Errorf("create application directory: %w", err)
-	}
-	repo, err := storage.Open(filepath.Join(configDir, "playlists.db"))
-	if err != nil {
-		return err
-	}
-	defer func() { runErr = errors.Join(runErr, repo.Close()) }()
-	keys := credentials.New(configDir)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	generator := openaiapi.New(keys, logger)
-	service := app.New(ctx, repo, generator, soundiiz.New(), logger)
-	defer service.Close()
-	api, err := httpapi.New(service, keys, openaiapi.NewValidator(), logger)
+	application, err := bootstrap.New(bootstrap.Options{Context: ctx, ConfigDir: *configPath, LogFormat: *logFormat, LogLevel: *logLevel})
+	if err != nil {
+		return err
+	}
+	defer func() { runErr = errors.Join(runErr, application.Close()) }()
+	api, err := httpapi.New(application.Service, application.Keys, application.Validator, application.Logger)
 	if err != nil {
 		return err
 	}
@@ -94,10 +72,10 @@ func run(args []string) (runErr error) {
 	// A wildcard listener is useful only inside a container. Keep the printed
 	// browser URL and Host-header contract on the literal loopback address.
 	url := "http://" + net.JoinHostPort(defaultHost, strconv.Itoa(*port)) + "/"
-	logger.Info("Playlist Forge is ready", zap.String("url", url), zap.String("config_dir", configDir))
+	application.Logger.Info("Playlist Forge is ready", zap.String("url", url), zap.String("config_dir", application.ConfigDir))
 	if *open {
 		if err := openBrowser(url); err != nil {
-			logger.Warn("could not open browser", zap.Error(err))
+			application.Logger.Warn("could not open browser", zap.Error(err))
 		}
 	}
 	errCh := make(chan error, 1)
@@ -150,18 +128,7 @@ func envBool(name string, fallback bool) bool {
 }
 
 func resolveConfigDir(override string) (string, error) {
-	if override != "" {
-		absolute, err := filepath.Abs(override)
-		if err != nil {
-			return "", fmt.Errorf("resolve application directory: %w", err)
-		}
-		return filepath.Clean(absolute), nil
-	}
-	root, err := os.UserConfigDir()
-	if err != nil {
-		return "", fmt.Errorf("find user config directory: %w", err)
-	}
-	return filepath.Join(root, "playlist-forge"), nil
+	return bootstrap.ResolveConfigDir(override, "playlist-forge")
 }
 
 func openBrowser(url string) error {

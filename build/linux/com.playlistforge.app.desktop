@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Playlist Forge
+Comment=Local-first AI playlist curation
+Exec=playlist-forge
+Icon=playlist-forge
+Terminal=false
+Categories=AudioVideo;Audio;
+StartupWMClass=playlist-forge

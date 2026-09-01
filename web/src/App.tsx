@@ -553,8 +553,7 @@ function PlaylistPage({
       async () => {
         const fresh = await api.playlist(id);
         setItem(fresh);
-        if (fresh.soundiizUrl)
-          window.open(fresh.soundiizUrl, "_blank", "noopener,noreferrer");
+        if (fresh.soundiizUrl) await api.openExternalURL(fresh.soundiizUrl);
       },
     );
   }
@@ -658,6 +657,18 @@ function PlaylistPage({
                 href={item.soundiizUrl}
                 target="_blank"
                 rel="noreferrer"
+                onClick={(event) => {
+                  event.preventDefault();
+                  api
+                    .openExternalURL(item.soundiizUrl!)
+                    .catch((reason) =>
+                      setError(
+                        reason instanceof Error
+                          ? reason.message
+                          : "Could not open Soundiiz",
+                      ),
+                    );
+                }}
               >
                 Reopen current link
               </a>

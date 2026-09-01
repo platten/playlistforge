@@ -1,3 +1,4 @@
-coverage
-node_modules
-../internal/webui/dist
+wailsjs/
+coverage/
+node_modules/
+../internal/webui/dist/

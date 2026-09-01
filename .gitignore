@@ -5,6 +5,9 @@
 /web/node_modules/
 /web/coverage/
 /internal/webui/dist/
+/build/bin/
+/web/wailsjs/
+/web/package.json.md5
 .env
 .env.*
 !.env.example

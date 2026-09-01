@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+set -e
+app_dir="$(dirname -- "$(readlink -f -- "$0")")"
+exec "$app_dir/usr/bin/playlist-forge" "$@"

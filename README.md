@@ -1,14 +1,40 @@
 # Playlist Forge
 
-Playlist Forge is a local, single-user web application that turns a natural-language brief into a researched playlist. It uses OpenAI's Responses API with `gpt-5.6-sol`, lets you review and revise every track, and creates a temporary Soundiiz handoff link for TIDAL, Qobuz, Spotify, Apple Music, or another service Soundiiz supports.
+Playlist Forge is a local, single-user desktop and web application that turns a natural-language brief into a researched playlist. It uses OpenAI's Responses API with `gpt-5.6-sol`, lets you review and revise every track, and creates a temporary Soundiiz handoff link for TIDAL, Qobuz, Spotify, Apple Music, or another service Soundiiz supports.
 
 Created by Paul Pietkiewicz (`773636+platten@users.noreply.github.com`) and distributed under the MIT License.
 
-The React/TypeScript frontend is embedded into the Go binary. No separate web server, Node.js installation, or database service is needed at runtime.
+The React/TypeScript frontend is embedded into the Go binary. The Wails desktop edition uses the operating system's native webview and calls Go directly; the browser edition retains its loopback HTTP adapter. Neither edition needs Node.js or a database service at runtime.
 
 See `ARCHITECTURE.md` for package responsibilities, security invariants, extension guidance, and the files that must change together when an API or persisted model evolves.
 
-## Run it
+## Run the desktop application
+
+Download the desktop artifact for your platform and launch **Playlist Forge**. The desktop edition opens its own window and does not listen on a local TCP port.
+
+- Windows uses WebView2 and is distributed as an NSIS installer.
+- macOS is built as a universal application for Intel and Apple Silicon.
+- Linux builds produce `.deb`, `.rpm`, and AppImage packages. They use GTK3 and WebKitGTK 4.1; install your distribution's WebKitGTK runtime package if it is not already present. The deb and rpm packages declare these dependencies for their package managers.
+
+For desktop development, install Wails' platform prerequisites, then run:
+
+```sh
+go run github.com/wailsapp/wails/v2/cmd/wails@v2.15.0 dev
+```
+
+Build a production desktop artifact for the current operating system with:
+
+```sh
+bash scripts/build-desktop.sh
+# Windows PowerShell:
+pwsh -File scripts/build-desktop.ps1
+```
+
+Artifacts are written under `build/bin`. On Linux this includes `playlist-forge_VERSION_amd64.deb`, `playlist-forge-VERSION-1.x86_64.rpm`, and `playlist-forge-VERSION-x86_64.AppImage`. The shared icon master is `build/appicon.png`; Wails and the Linux packaging stage derive their native resources from it.
+
+CI currently produces unsigned desktop artifacts. Configure Windows code-signing and an Apple Developer ID/notarization identity before treating downloads as a warning-free public release.
+
+## Run the browser application
 
 Download the executable for your operating system and architecture, then run it:
 
@@ -16,7 +42,7 @@ Download the executable for your operating system and architecture, then run it:
 playlist-forge
 ```
 
-The native app listens on `http://127.0.0.1:8787` by default and opens that page in your default browser. Keep this loopback default for ordinary desktop use.
+The browser edition listens on `http://127.0.0.1:8787` by default and opens that page in your default browser. Keep this loopback default for ordinary local use.
 
 Useful options:
 
@@ -143,13 +169,13 @@ cd ..
 go build -trimpath -ldflags="-s -w" -o playlist-forge ./cmd/playlistforge
 ```
 
-Cross-compilation is pure Go (`CGO_ENABLED=0`). For example:
+The browser executable remains pure Go and supports ordinary cross-compilation (`CGO_ENABLED=0`). For example:
 
 ```text
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o playlist-forge-linux-arm64 ./cmd/playlistforge
 ```
 
-GitHub Actions builds Windows, Linux, and macOS binaries for both `amd64` and `arm64`, and validates the multi-platform container build.
+GitHub Actions builds browser binaries for Windows, Linux, and macOS on `amd64` and `arm64`, validates the multi-platform container, and builds native Wails desktop artifacts on Windows, Linux, and macOS runners.
 
 ## Development and verification
 

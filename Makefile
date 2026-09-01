@@ -4,7 +4,7 @@ PROJECT_DIR := .
 
 .DEFAULT_GOAL := all
 
-.PHONY: all test build docker clean
+.PHONY: all test build desktop docker clean
 
 all: test build
 
@@ -13,6 +13,9 @@ test:
 
 build:
 	cd "$(PROJECT_DIR)" && bash scripts/build.sh --skip-tests
+
+desktop:
+	cd "$(PROJECT_DIR)" && bash scripts/build-desktop.sh --skip-tests
 
 docker:
 	cd "$(PROJECT_DIR)" && docker build -t playlist-forge:local .

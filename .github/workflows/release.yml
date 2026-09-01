@@ -32,8 +32,109 @@ jobs:
       - name: Run the Bash quality gate
         run: bash scripts/test.sh
 
-  publish:
+  desktop-linux:
     needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Install Linux webview build dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+      - name: Build the Linux desktop packages
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          sed -i -E 's/"productVersion": "[^"]+"/"productVersion": "'"$version"'"/' wails.json
+          bash scripts/build-desktop.sh --skip-tests
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-desktop-linux
+          path: |
+            build/bin/*.deb
+            build/bin/*.rpm
+            build/bin/*.AppImage
+
+  desktop-windows:
+    needs: quality
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Install NSIS
+        run: choco install nsis --yes --no-progress
+      - name: Build and archive the Windows desktop application
+        shell: pwsh
+        run: |
+          $config = Get-Content wails.json -Raw | ConvertFrom-Json
+          $config.info.productVersion = $env:GITHUB_REF_NAME.TrimStart('v')
+          $config | ConvertTo-Json -Depth 10 | Set-Content wails.json -Encoding utf8
+          ./scripts/build-desktop.ps1 -SkipTests
+          Compress-Archive -Path build/bin/* -DestinationPath playlist-forge-desktop-windows-amd64.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-desktop-windows
+          path: playlist-forge-desktop-windows-amd64.zip
+
+  desktop-macos:
+    needs: quality
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Build and archive the universal macOS desktop application
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          sed -i '' -E 's/"productVersion": "[^"]+"/"productVersion": "'"$version"'"/' wails.json
+          bash scripts/build-desktop.sh --skip-tests
+          ditto -c -k --sequesterRsrc --keepParent build/bin/playlist-forge.app playlist-forge-desktop-macos-universal.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-desktop-macos
+          path: playlist-forge-desktop-macos-universal.zip
+
+  publish:
+    needs: [quality, desktop-linux, desktop-windows, desktop-macos]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -59,6 +160,12 @@ jobs:
           cache-dependency-path: go.sum
       - name: Build all release binaries
         run: bash scripts/build.sh --skip-tests --output release
+      - name: Download desktop release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-desktop-*
+          path: release
+          merge-multiple: true
 
       - name: Resolve the lowercase GHCR image name
         id: image

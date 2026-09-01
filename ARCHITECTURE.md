@@ -11,11 +11,12 @@ The build is organized around a few deliberate constraints:
 - Keep business rules independent from HTTP, OpenAI, Soundiiz, SQLite, and React.
 - Make every paid or externally visible operation cancellable and testable behind an interface.
 - Preserve playlist history as immutable revisions.
-- Cross-compile without CGO for Windows, Linux, and macOS on AMD64 and ARM64.
+- Keep the browser edition cross-compilable without CGO for Windows, Linux, and macOS on AMD64 and ARM64.
+- Offer a native Wails shell without coupling business rules to Wails or removing the loopback browser/container distribution.
 
 ## Technology stack
 
-The backend uses Go 1.27, the standard `net/http` server, Zap logging, the official OpenAI Go SDK, a platform-keyring adapter, and the pure-Go `modernc.org/sqlite` driver. The frontend uses React 19, TypeScript 6, and Vite 8. Vitest, Testing Library, jest-axe, ESLint, and Prettier provide frontend quality gates.
+The backend uses Go 1.27, Wails 2.15, the standard `net/http` server, Zap logging, the official OpenAI Go SDK, a platform-keyring adapter, and the pure-Go `modernc.org/sqlite` driver. The frontend uses React 19, TypeScript 6, and Vite 8. Vitest, Testing Library, jest-axe, ESLint, and Prettier provide frontend quality gates.
 
 Exact dependency versions belong in `go.mod`, `go.sum`, `web/package.json`, and `web/pnpm-lock.yaml`; those files are authoritative when this overview and a dependency manifest disagree.
 
@@ -47,29 +48,26 @@ playlist-forge executable
 
 The frontend build must therefore finish before `go build`. A missing `internal/webui/dist` is a build error by design; it prevents accidentally shipping a binary without its interface.
 
-The application uses a pure-Go SQLite implementation and builds with `CGO_ENABLED=0`, which makes ordinary Go cross-compilation sufficient for all supported targets.
+The browser edition uses a pure-Go SQLite implementation and builds with `CGO_ENABLED=0`, which makes ordinary Go cross-compilation sufficient for all supported targets. Wails desktop builds use each target platform's native webview toolchain.
 
 The `Dockerfile` repeats the same two build stages in isolated Node and Go builders. It cross-compiles the requested Linux architecture and copies only the static executable into a distroless image containing CA certificates. The runtime is non-root, declares `/config` as its writable data volume, and does not contain a shell, compiler, package manager, Node.js, or pnpm.
 
 ## Runtime shape
 
-Playlist Forge is one local process and one executable:
+Playlist Forge has two presentation adapters over the same local service:
 
 ```text
-Browser
-  │ loopback JSON API
-  ▼
-internal/httpapi
-  │
-  ▼
-internal/app ─────► internal/playlist
-  │                       domain model and ports
-  ├────► internal/openaiapi ─────► OpenAI Responses API
-  ├────► internal/soundiiz  ─────► Soundiiz import endpoint
-  └────► internal/storage   ─────► local SQLite database
-
-cmd/playlistforge composes the adapters and embeds web/dist via internal/webui.
+Wails window ──► internal/desktop ──┐
+Browser ──────► internal/httpapi ───┴──► internal/app ─────► internal/playlist
+                                           │                  domain model and ports
+                                           ├────► internal/openaiapi ──► OpenAI Responses API
+                                           ├────► internal/soundiiz ───► Soundiiz import endpoint
+                                           └────► internal/storage ────► local SQLite database
 ```
+
+`internal/bootstrap` composes storage, credentials, providers, and the application service. The repository-root Wails entrypoint embeds the same Vite distribution and binds `internal/desktop.API`; `cmd/playlistforge` retains the loopback HTTP edition.
+
+The frontend selects its transport at startup. Wails injects `window.go.desktop.API`, while an ordinary browser uses the HTTP client. Page components depend only on the shared `BackendAPI` contract.
 
 The native server binds to the IPv4 loopback literal `127.0.0.1`. The container explicitly sets `PLAYLIST_FORGE_HOST=0.0.0.0` inside its network namespace so Docker can forward traffic, but the supported publication remains `127.0.0.1:<host-port>:8787`. Host validation still accepts only the literal loopback Host header. The application is intentionally unauthenticated and must not be published to a LAN, public interface, or external reverse proxy without adding a real authentication and authorization design.
 
@@ -245,6 +243,8 @@ The supplied Compose definition keeps the host port on loopback, runs the image 
 | macOS | AMD64, ARM64 | `playlist-forge-darwin-*` |
 
 GitHub Actions invokes the Bash quality gate on Ubuntu, including the race detector when CGO is available, then calls the Bash build script and uploads the complete artifact directory. CI also builds Linux AMD64 and ARM64 container images; pull requests build without pushing, while default-branch commits receive branch and commit tags in GitHub Container Registry. The PowerShell scripts provide the same native workflow for local Windows maintainers.
+
+Native desktop builds run on a runner for each target operating system. The Linux Wails stage links WebKitGTK 4.1, then `scripts/package-linux.sh` uses pinned nFPM and AppImage tooling to produce deb, rpm, and AppImage packages. Each package carries the desktop entry, application icon, and AppStream metadata; deb and rpm metadata use distribution-specific GTK/WebKit dependency names.
 
 Pushing a `v*` tag runs the release workflow after a fresh quality gate. The workflow builds all six native binaries, publishes a multi-platform GHCR image with semantic-version and `latest` tags, emits provenance and an OCI SBOM attestation, scans the published image into an SPDX JSON SBOM, includes that file in `SHA256SUMS.txt`, and attaches the binaries, checksums, and SBOM to an idempotently created or updated GitHub Release.
 

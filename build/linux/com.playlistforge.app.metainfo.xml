@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.playlistforge.app</id>
+  <name>Playlist Forge</name>
+  <summary>Turn a natural-language brief into a researched playlist</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>Playlist Forge is a local-first AI playlist curator with revision history and Soundiiz handoff support.</p>
+  </description>
+  <url type="homepage">https://github.com/platten/playlistforge</url>
+  <launchable type="desktop-id">com.playlistforge.app.desktop</launchable>
+  <provides>
+    <binary>playlist-forge</binary>
+  </provides>
+</component>

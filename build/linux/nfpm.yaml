@@ -1,0 +1,39 @@
+name: playlist-forge
+arch: amd64
+platform: linux
+version: ${PACKAGE_VERSION}
+release: "1"
+section: sound
+priority: optional
+maintainer: Paul Pietkiewicz <773636+platten@users.noreply.github.com>
+description: Local-first AI playlist curation with revision history and Soundiiz handoff support.
+vendor: Playlist Forge
+homepage: https://github.com/platten/playlistforge
+license: MIT
+contents:
+  - src: build/bin/playlist-forge
+    dst: /usr/bin/playlist-forge
+    file_info:
+      mode: 0755
+  - src: build/linux/com.playlistforge.app.desktop
+    dst: /usr/share/applications/com.playlistforge.app.desktop
+    file_info:
+      mode: 0644
+  - src: build/appicon.png
+    dst: /usr/share/pixmaps/playlist-forge.png
+    file_info:
+      mode: 0644
+  - src: build/linux/com.playlistforge.app.metainfo.xml
+    dst: /usr/share/metainfo/com.playlistforge.app.metainfo.xml
+    file_info:
+      mode: 0644
+depends:
+  - libgtk-3-0 | libgtk-3-0t64
+  - libwebkit2gtk-4.1-0
+overrides:
+  rpm:
+    depends:
+      - gtk3
+      - webkit2gtk4.1
+rpm:
+  group: Applications/Multimedia

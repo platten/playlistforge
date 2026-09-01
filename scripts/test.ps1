@@ -41,7 +41,7 @@ finally {
 Write-Host '==> Checking Go formatting'
 Push-Location $projectRoot
 try {
-    $unformatted = @(& gofmt -l cmd internal)
+    $unformatted = @(& gofmt -l main.go cmd internal)
     Assert-LastExitCode 'gofmt check'
     if ($unformatted.Count -gt 0) {
         throw "The following Go files require gofmt:`n$($unformatted -join "`n")"

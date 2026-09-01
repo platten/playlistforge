@@ -62,6 +62,15 @@ describe("API client", () => {
       fetchMock.mock.calls.some(([path]) => String(path).includes("a%2Fb")),
     ).toBe(true);
   });
+  it("opens external links in a new browser context", async () => {
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    await api.openExternalURL("https://soundiiz.com/go/import-playlist/a");
+    expect(open).toHaveBeenCalledWith(
+      "https://soundiiz.com/go/import-playlist/a",
+      "_blank",
+      "noopener,noreferrer",
+    );
+  });
   it("uses the HTTP status text when an error body is not JSON", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("bad gateway", { status: 502, statusText: "Bad Gateway" }),

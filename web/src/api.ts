@@ -1,4 +1,31 @@
 import type { Config, Effort, Job, Playlist } from "./types";
+import { createDesktopAPI } from "./desktop-api";
+
+export interface BackendAPI {
+  config(): Promise<Config>;
+  saveKey(key: string, allowPlaintext: boolean): Promise<Config["credential"]>;
+  deleteKey(): Promise<void>;
+  playlists(): Promise<Playlist[]>;
+  playlist(id: string): Promise<Playlist>;
+  generate(body: {
+    prompt: string;
+    trackCount: number;
+    effort: Effort;
+    referenceIds: string[];
+  }): Promise<Job>;
+  refine(id: string, prompt: string, effort: Effort): Promise<Job>;
+  removeTrack(playlistId: string, trackId: string): Promise<Playlist>;
+  replaceTrack(
+    playlistId: string,
+    trackId: string,
+    prompt: string,
+    effort: Effort,
+  ): Promise<Job>;
+  soundiiz(id: string, destinations: string[]): Promise<Job>;
+  job(id: string): Promise<Job>;
+  cancelJob(id: string): Promise<void>;
+  openExternalURL(url: string): Promise<void>;
+}
 
 // Every browser mutation carries a non-simple header. Together with the
 // backend's Origin checks, this prevents another website from submitting a
@@ -22,7 +49,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export const api = {
+const httpApi: BackendAPI = {
   config: () => request<Config>("/api/config"),
   saveKey: (key: string, allowPlaintext: boolean) =>
     request<Config["credential"]>("/api/config/openai-key", {
@@ -89,7 +116,14 @@ export const api = {
       method: "DELETE",
       headers: { "X-Playlist-Forge": "1" },
     }),
+  openExternalURL: async (url: string) => {
+    window.open(url, "_blank", "noopener,noreferrer");
+  },
 };
+
+// Wails injects its Go bindings before the application module runs. Browser
+// builds do not have that global and retain the loopback HTTP transport.
+export const api: BackendAPI = createDesktopAPI() || httpApi;
 
 export async function waitForJob(
   initial: Job,

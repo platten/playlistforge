@@ -31,7 +31,7 @@ echo "==> Installing and verifying the frontend"
 )
 
 echo "==> Checking Go formatting"
-unformatted="$(cd "$project_root" && gofmt -l cmd internal)"
+unformatted="$(cd "$project_root" && gofmt -l main.go cmd internal)"
 if [[ -n "$unformatted" ]]; then
   echo "The following Go files require gofmt:" >&2
   echo "$unformatted" >&2
