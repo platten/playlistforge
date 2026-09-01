@@ -230,19 +230,6 @@ h2 {
   gap: clamp(3rem, 7vw, 8rem);
   align-items: center;
 }
-.quality-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.55rem;
-  margin-top: 2rem;
-}
-.quality-pills span {
-  padding: 0.45rem 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: 3rem;
-  color: var(--muted);
-  font-size: 0.72rem;
-}
 .composer {
   padding: clamp(1.3rem, 3vw, 2.4rem);
 }

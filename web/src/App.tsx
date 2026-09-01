@@ -204,11 +204,6 @@ function CreatePage({
           your finished playlist to Soundiiz for TIDAL, Qobuz, Spotify, or Apple
           Music.
         </p>
-        <div className="quality-pills" aria-label="Features">
-          <span>Web-grounded</span>
-          <span>Remaster-aware</span>
-          <span>Local history</span>
-        </div>
       </div>
       <form className="composer card" onSubmit={submit}>
         {!config?.credential.configured && (
