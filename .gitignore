@@ -1,0 +1,14 @@
+/outputs/
+/bin/
+/coverage/
+/coverage.out
+/web/node_modules/
+/web/coverage/
+/internal/webui/dist/
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+.DS_Store

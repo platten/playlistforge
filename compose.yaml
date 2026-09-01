@@ -1,0 +1,22 @@
+services:
+  playlist-forge:
+    build:
+      context: .
+    image: playlist-forge:local
+    init: true
+    read_only: true
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+    volumes:
+      - playlist-forge-data:/config
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  playlist-forge-data:

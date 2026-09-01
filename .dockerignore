@@ -1,0 +1,17 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+outputs
+work
+coverage
+coverage.out
+web/node_modules
+web/coverage
+internal/webui/dist
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+
