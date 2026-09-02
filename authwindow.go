@@ -62,15 +62,13 @@ func runAuth(req musicsource.AuthRequest) (string, error) {
 	}
 
 	// Device-flow providers approve in the user's real browser; the provider's
-	// Complete polls for the result, so there is nothing to capture here.
+	// Complete polls for the result, so there is nothing to capture here. A
+	// browser that can't be launched is not fatal: the poll still runs and the
+	// URL is logged for the user to open by hand.
 	if req.OpenInBrowser {
-		app := application.Get()
-		if app == nil {
-			return "", errors.New("application is not running")
-		}
 		slog.Info("streaming sign-in: opening in the system browser", "url", req.URL)
-		if err := app.Browser.OpenURL(req.URL); err != nil {
-			return "", fmt.Errorf("open sign-in page: %w", err)
+		if err := openInBrowser(req.URL); err != nil {
+			slog.Warn("streaming sign-in: could not launch a browser — open this URL manually to approve", "url", req.URL, "error", err)
 		}
 		return "", nil
 	}

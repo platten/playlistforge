@@ -48,11 +48,7 @@ func run() (runErr error) {
 		runtime.Service,
 		runtime.Keys,
 		runtime.Validator,
-		func(raw string) {
-			if app := application.Get(); app != nil {
-				_ = app.Browser.OpenURL(raw)
-			}
-		},
+		func(raw string) { _ = openInBrowser(raw) },
 		runAuth,
 	)
 
