@@ -7,14 +7,6 @@ import type { Config, Effort, Job, Playlist, Track } from "./types";
 type Route =
   { page: "home" | "history" | "settings" } | { page: "playlist"; id: string };
 
-const defaultDestinations = ["tidal", "qobuz", "spotify", "apple_music"];
-const destinationLabels: Record<string, string> = {
-  tidal: "TIDAL",
-  qobuz: "Qobuz",
-  spotify: "Spotify",
-  apple_music: "Apple Music",
-};
-
 function parseRoute(): Route {
   // A tiny History API router is sufficient for the four embedded views and
   // avoids adding a routing dependency to the runtime bundle.
@@ -144,7 +136,6 @@ export default function App() {
         {route.page === "playlist" && (
           <PlaylistPage
             id={route.id}
-            availableDestinations={config?.destinations || defaultDestinations}
             run={run}
             navigate={navigate}
             setError={setError}
@@ -497,13 +488,11 @@ function SettingsPage({
 
 function PlaylistPage({
   id,
-  availableDestinations,
   run,
   navigate,
   setError,
 }: {
   id: string;
-  availableDestinations: string[];
   run: (
     op: () => Promise<Job>,
     after?: (job: Job) => Promise<void> | void,
@@ -514,19 +503,7 @@ function PlaylistPage({
   const [item, setItem] = useState<Playlist | null>(null);
   const [refine, setRefine] = useState("");
   const [effort, setEffort] = useState<Effort>("medium");
-  const [destination, setDestination] = useState("");
-  const load = useCallback(
-    () =>
-      api.playlist(id).then((value) => {
-        setItem(value);
-        // Older releases allowed several saved intentions. Do not guess which
-        // one should win when reopening that legacy state.
-        setDestination(
-          value.destinations?.length === 1 ? value.destinations[0] : "",
-        );
-      }),
-    [id],
-  );
+  const load = useCallback(() => api.playlist(id).then(setItem), [id]);
   useEffect(() => {
     load().catch((reason: Error) => setError(reason.message));
   }, [load, setError]);
@@ -549,7 +526,7 @@ function PlaylistPage({
   }
   function transfer() {
     run(
-      () => api.soundiiz(id, [destination]),
+      () => api.soundiiz(id),
       async () => {
         const fresh = await api.playlist(id);
         setItem(fresh);
@@ -624,31 +601,12 @@ function PlaylistPage({
             </button>
           </form>
           <div className="card transfer-card">
-            <h2>Send to a service</h2>
+            <h2>Open in Soundiiz</h2>
             <p>
-              Choose one intended destination. Soundiiz opens a generic handoff
-              page where you review the matches and complete the transfer.
+              Review the catalog matches, choose your streaming service, and
+              complete the transfer on Soundiiz.
             </p>
-            <fieldset className="destination-group">
-              <legend>Streaming destination</legend>
-              {availableDestinations.map((option) => (
-                <label className="destination" key={option}>
-                  <input
-                    type="radio"
-                    name="streaming-destination"
-                    value={option}
-                    checked={destination === option}
-                    onChange={() => setDestination(option)}
-                  />
-                  <span>{destinationLabels[option] || option}</span>
-                </label>
-              ))}
-            </fieldset>
-            <button
-              className="button primary"
-              disabled={!destination}
-              onClick={transfer}
-            >
+            <button className="button primary" onClick={transfer}>
               Open Soundiiz handoff <span aria-hidden="true">↗</span>
             </button>
             {item.soundiizUrl && (

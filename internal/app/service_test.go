@@ -229,12 +229,7 @@ func TestHandoff(t *testing.T) {
 	importer := fakeImporter{result: soundiiz.Result{ShareURL: "https://soundiiz.com/go/import-playlist/token", ExpiresAt: time.Now().Add(time.Hour).Unix(), Tracks: 1}}
 	service, repo := testService(t, gen, importer)
 	createReference(t, repo, "p")
-	for _, destinations := range [][]string{nil, {"apple"}, {"tidal", "tidal"}, {"tidal", "qobuz"}} {
-		if _, err := service.Handoff("p", destinations); err == nil {
-			t.Fatalf("accepted %#v", destinations)
-		}
-	}
-	job, err := service.Handoff("p", []string{"apple_music"})
+	job, err := service.Handoff("p")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,16 +237,16 @@ func TestHandoff(t *testing.T) {
 		t.Fatalf("job=%#v", done)
 	}
 	item, _ := service.Get(context.Background(), "p")
-	if item.SoundiizURL == nil || len(item.Destinations) != 1 || item.Destinations[0] != "apple_music" {
+	if item.SoundiizURL == nil {
 		t.Fatalf("item=%#v", item)
 	}
 	service.importer = fakeImporter{result: soundiiz.Result{Tracks: 0}}
-	job, _ = service.Handoff("p", []string{"spotify"})
+	job, _ = service.Handoff("p")
 	if done := await(t, service, job.ID); done.Status != playlist.JobFailed || !strings.Contains(done.Error, "accepted") {
 		t.Fatalf("job=%#v", done)
 	}
 	service.importer = fakeImporter{err: errors.New("soundiiz down")}
-	job, _ = service.Handoff("p", []string{"spotify"})
+	job, _ = service.Handoff("p")
 	if done := await(t, service, job.ID); done.Status != playlist.JobFailed {
 		t.Fatalf("job=%#v", done)
 	}

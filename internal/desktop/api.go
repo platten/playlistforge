@@ -24,12 +24,11 @@ type keyValidator interface {
 
 // Config is the stable presentation contract shared with the React UI.
 type Config struct {
-	Credential   credentials.Status `json:"credential"`
-	Model        string             `json:"model"`
-	TrackCounts  []int              `json:"trackCounts"`
-	Efforts      []playlist.Effort  `json:"efforts"`
-	Destinations []string           `json:"destinations"`
-	Pricing      Pricing            `json:"pricing"`
+	Credential  credentials.Status `json:"credential"`
+	Model       string             `json:"model"`
+	TrackCounts []int              `json:"trackCounts"`
+	Efforts     []playlist.Effort  `json:"efforts"`
+	Pricing     Pricing            `json:"pricing"`
 }
 
 // Pricing describes the embedded estimate rate card without exposing pointers.
@@ -57,11 +56,10 @@ func New(ctx context.Context, service *app.Service, keys credentialStore, valida
 
 func (a *API) Config() Config {
 	return Config{
-		Credential:   a.keys.Status(),
-		Model:        playlist.ModelGPTSol,
-		TrackCounts:  []int{20, 30, 40, 50, 60, 100},
-		Efforts:      []playlist.Effort{playlist.EffortMedium, playlist.EffortHigh, playlist.EffortXHigh, playlist.EffortMax},
-		Destinations: app.SupportedDestinations(),
+		Credential:  a.keys.Status(),
+		Model:       playlist.ModelGPTSol,
+		TrackCounts: []int{20, 30, 40, 50, 60, 100},
+		Efforts:     []playlist.Effort{playlist.EffortMedium, playlist.EffortHigh, playlist.EffortXHigh, playlist.EffortMax},
 		Pricing: Pricing{
 			Version:               playlist.CurrentPricing.Version,
 			InputPerMillion:       playlist.CurrentPricing.InputPerMillion,
@@ -101,8 +99,8 @@ func (a *API) ReplaceTrack(playlistID, trackID, prompt string, effort playlist.E
 	return a.service.Replace(playlistID, trackID, prompt, effort)
 }
 
-func (a *API) CreateSoundiizHandoff(id string, destinations []string) (playlist.Job, error) {
-	return a.service.Handoff(id, destinations)
+func (a *API) CreateSoundiizHandoff(id string) (playlist.Job, error) {
+	return a.service.Handoff(id)
 }
 
 func (a *API) GetJob(id string) (playlist.Job, error) {

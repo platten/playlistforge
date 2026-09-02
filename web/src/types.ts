@@ -53,7 +53,6 @@ export interface Playlist {
   updatedAt: string;
   currentRevision: Revision;
   revisionCount: number;
-  destinations: string[];
   soundiizUrl?: string;
   soundiizExpiresAt?: string;
 }
@@ -77,7 +76,6 @@ export interface Config {
   model: string;
   trackCounts: number[];
   efforts: Effort[];
-  destinations: string[];
   pricing: {
     version: string;
     inputPerMillion: number;

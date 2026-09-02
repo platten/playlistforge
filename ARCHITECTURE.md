@@ -136,11 +136,11 @@ Track replacement follows the same asynchronous path. Track removal is local and
 
 ### Create a Soundiiz handoff
 
-1. The user selects exactly one intended destination in the preview radio group: TIDAL, Qobuz, Spotify, or Apple Music. Stable backend identifiers are returned by `/api/config`, so the UI and validation allow-list stay synchronized.
+1. The user requests a generic Soundiiz handoff from the playlist preview.
 2. The backend loads the accepted revision and sends only playlist title, description, track titles, and artists to Soundiiz.
 3. Redirects are disabled. The returned URL must use HTTPS, the exact `soundiiz.com` host, and the documented import path.
-4. The temporary link, expiry, and intended destination are saved locally.
-5. React opens the validated generic URL. Matching, authentication, and final transfers happen on Soundiiz.
+4. The temporary link and expiry are saved locally.
+5. React opens the validated generic URL. Matching, destination selection, authentication, and final transfers happen on Soundiiz.
 
 ### Save an OpenAI API key
 
@@ -153,13 +153,12 @@ Track replacement follows the same asynchronous path. Track removal is local and
 
 ## Persistence model
 
-SQLite stores five related concepts:
+SQLite stores four related concepts:
 
 - `playlists` is the aggregate root and points to the active revision.
 - `revisions` contains immutable title, prompt, model, effort, usage, and timestamp snapshots.
 - `tracks` stores ordered recording candidates scoped to a revision.
 - `revision_references` records which previous playlists influenced generation.
-- `destinations` stores the user's single latest transfer intent; its plural schema name remains for backward compatibility with databases created by earlier releases.
 
 Usage is stored as versioned JSON because provider counters can evolve independently from the relational playlist model. Times are written as UTC RFC 3339 values. Writes that create or activate revisions use SQL transactions.
 
@@ -190,7 +189,7 @@ Unknown frontend routes fall back to embedded `index.html`, allowing the History
 3. A replacement may not duplicate another title/artist pair in the active playlist.
 4. Removing or changing tracks creates a revision; historical rows are not mutated.
 5. At least one track must remain, and Soundiiz receives no more than 200 tracks.
-6. Exactly one destination is accepted per handoff. A generic Soundiiz link records that intent but does not itself perform the transfer.
+6. A generic Soundiiz handoff does not choose or perform the final transfer; Soundiiz owns matching and destination selection.
 7. API keys never enter SQLite, API responses, prompts, container layers, or normal logs. Key-shaped values are redacted by the logging core.
 8. Browser mutations require the custom protection header and a safe same-origin context.
 9. Long-running paid jobs are serialized and are cancelled during process shutdown.

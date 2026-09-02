@@ -115,8 +115,8 @@ Published images use `ghcr.io/<owner>/<repository>:<tag>`. CI publishes default-
 2. Optionally select up to ten previous playlists as inspiration.
 3. Review the generated title, description, ordering, recording/version notes, and per-track rationale.
 4. Remove tracks, ask for individual replacements, or refine the entire playlist with another prompt. Each operation creates an immutable local revision.
-5. Select exactly one destination—TIDAL, Qobuz, Spotify, or Apple Music—using the radio group, then create a generic Soundiiz handoff link.
-6. Finish matching and transfer on Soundiiz. The public import link expires after roughly 24 hours. To transfer the playlist to another service, return to the preview, select that service, and create a new handoff.
+5. Create a generic Soundiiz handoff link from the playlist preview.
+6. Finish matching, choose the destination service, and transfer on Soundiiz. The public import link expires after roughly 24 hours.
 
 Soundiiz receives only the accepted playlist title, description, track titles, and artist names. Playlist Forge does not receive Spotify, TIDAL, Qobuz, or Apple Music credentials.
 
@@ -138,10 +138,10 @@ Playlist Forge prepares a temporary public import page; Soundiiz performs the au
 
 To complete each transfer:
 
-1. In Playlist Forge, accept the playlist, select exactly one destination with the radio group, and choose **Open Soundiiz handoff**.
+1. In Playlist Forge, accept the playlist and choose **Open Soundiiz handoff**.
 2. Sign in to Soundiiz if asked. Review the imported title and tracks, inspect Soundiiz's catalog matches, and correct or skip any mismatch before confirming the transfer.
 3. Select the connected destination account and start the transfer. Wait for Soundiiz to report completion, then open the destination service and verify the playlist and track versions.
-4. To send the same playlist to another service, connect that service in Soundiiz, return to Playlist Forge, select the new destination, and create a fresh handoff.
+4. To send the same playlist to another service, connect and select that service in Soundiiz. Create a fresh handoff from Playlist Forge only if the current link has expired.
 
 The free Soundiiz plan currently supports one playlist transfer at a time with up to 200 selected tracks, so it covers Playlist Forge's 100-track maximum; see [Soundiiz plans](https://soundiiz.com/pricing) for current limits. Catalogs differ by service and region, so a track can be unavailable or resolve to another edition. A Playlist Forge handoff expires after roughly 24 hours; create a new one from the saved playlist if needed. Streaming credentials stay with Soundiiz and the streaming service and are never sent to Playlist Forge.
 

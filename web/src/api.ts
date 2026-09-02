@@ -21,7 +21,7 @@ export interface BackendAPI {
     prompt: string,
     effort: Effort,
   ): Promise<Job>;
-  soundiiz(id: string, destinations: string[]): Promise<Job>;
+  soundiiz(id: string): Promise<Job>;
   job(id: string): Promise<Job>;
   cancelJob(id: string): Promise<void>;
   openExternalURL(url: string): Promise<void>;
@@ -104,11 +104,11 @@ const httpApi: BackendAPI = {
         body: JSON.stringify({ prompt, effort }),
       },
     ),
-  soundiiz: (id: string, destinations: string[]) =>
+  soundiiz: (id: string) =>
     request<Job>(`/api/playlists/${encodeURIComponent(id)}/soundiiz`, {
       method: "POST",
       headers: protectionHeaders,
-      body: JSON.stringify({ destinations }),
+      body: "{}",
     }),
   job: (id: string) => request<Job>(`/api/jobs/${encodeURIComponent(id)}`),
   cancelJob: (id: string) =>

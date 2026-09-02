@@ -219,24 +219,6 @@ func (r *Repository) Get(ctx context.Context, id string) (playlist.Playlist, err
 		}
 		item.SoundiizExpires = &expires
 	}
-	destRows, err := r.db.QueryContext(ctx, `SELECT destination FROM destinations WHERE playlist_id=? ORDER BY destination`, id)
-	if err != nil {
-		return playlist.Playlist{}, fmt.Errorf("get destinations: %w", err)
-	}
-	defer func() { _ = destRows.Close() }()
-	for destRows.Next() {
-		var destination string
-		if err := destRows.Scan(&destination); err != nil {
-			return playlist.Playlist{}, fmt.Errorf("scan destination: %w", err)
-		}
-		item.Destinations = append(item.Destinations, destination)
-	}
-	if err := destRows.Err(); err != nil {
-		return playlist.Playlist{}, fmt.Errorf("iterate destinations: %w", err)
-	}
-	if err := destRows.Close(); err != nil {
-		return playlist.Playlist{}, fmt.Errorf("close destinations: %w", err)
-	}
 	return item, nil
 }
 
@@ -326,24 +308,6 @@ func (r *Repository) DeleteTrack(ctx context.Context, playlistID, trackID string
 	revision.Tracks = tracks
 	revision.CreatedAt = time.Now().UTC()
 	return r.AddRevision(ctx, playlistID, revision)
-}
-
-// SetDestinations replaces the user's intended transfer destinations.
-func (r *Repository) SetDestinations(ctx context.Context, playlistID string, destinations []string) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin destinations: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `DELETE FROM destinations WHERE playlist_id=?`, playlistID); err != nil {
-		return fmt.Errorf("clear destinations: %w", err)
-	}
-	for _, destination := range destinations {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO destinations(playlist_id,destination) VALUES(?,?)`, playlistID, destination); err != nil {
-			return fmt.Errorf("insert destination: %w", err)
-		}
-	}
-	return tx.Commit()
 }
 
 // SetSoundiiz stores the latest temporary Soundiiz handoff and expiration.

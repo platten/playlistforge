@@ -8,7 +8,6 @@ const config = {
   model: "gpt-5.6-sol",
   trackCounts: [20, 30],
   efforts: ["medium", "high"],
-  destinations: ["tidal", "qobuz", "spotify", "apple_music"],
   pricing: {
     version: "test",
     inputPerMillion: 4,
@@ -130,14 +129,13 @@ describe("App", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(helpButton).toHaveFocus();
   });
-  it("offers one Soundiiz destination through an exclusive radio group", async () => {
+  it("offers a direct Soundiiz handoff without destination controls", async () => {
     window.history.replaceState({}, "", "/playlists/p");
     const playlist = {
       id: "p",
       createdAt: "2026-09-01T00:00:00Z",
       updatedAt: "2026-09-01T00:00:00Z",
       revisionCount: 1,
-      destinations: [],
       currentRevision: {
         id: "r",
         playlistId: "p",
@@ -180,16 +178,10 @@ describe("App", () => {
     });
 
     render(<App />);
-    const appleMusic = await screen.findByRole("radio", {
-      name: "Apple Music",
-    });
-    expect(appleMusic).not.toBeChecked();
-    fireEvent.click(appleMusic);
-    expect(appleMusic).toBeChecked();
-    const spotify = screen.getByRole("radio", { name: "Spotify" });
-    expect(spotify).toHaveAttribute("name", "streaming-destination");
-    fireEvent.click(spotify);
-    expect(spotify).toBeChecked();
-    expect(appleMusic).not.toBeChecked();
+    expect(
+      await screen.findByRole("button", { name: /open soundiiz handoff/i }),
+    ).toBeEnabled();
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(screen.getByText(/choose your streaming service/i)).toBeVisible();
   });
 });

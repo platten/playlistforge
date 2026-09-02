@@ -49,7 +49,7 @@ describe("Wails API adapter", () => {
     await api.refine("p", "more", "high");
     await api.removeTrack("p", "t");
     await api.replaceTrack("p", "t", "different", "xhigh");
-    await api.soundiiz("p", ["qobuz"]);
+    await api.soundiiz("p");
     await api.job("j");
     await api.cancelJob("j");
     await api.openExternalURL("https://soundiiz.com/go/import-playlist/a");
@@ -60,6 +60,7 @@ describe("Wails API adapter", () => {
       "different",
       "xhigh",
     );
+    expect(bindings.CreateSoundiizHandoff).toHaveBeenCalledWith("p");
     expect(bindings.OpenExternalURL).toHaveBeenCalledOnce();
   });
 

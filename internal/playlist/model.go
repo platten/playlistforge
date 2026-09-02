@@ -84,14 +84,13 @@ type Revision struct {
 	CreatedAt   time.Time `json:"createdAt"`
 }
 
-// Playlist points to its active revision and latest transfer preferences.
+// Playlist points to its active revision and latest Soundiiz handoff.
 type Playlist struct {
 	ID              string     `json:"id"`
 	CreatedAt       time.Time  `json:"createdAt"`
 	UpdatedAt       time.Time  `json:"updatedAt"`
 	CurrentRevision Revision   `json:"currentRevision"`
 	RevisionCount   int        `json:"revisionCount"`
-	Destinations    []string   `json:"destinations"`
 	SoundiizURL     *string    `json:"soundiizUrl,omitempty"`
 	SoundiizExpires *time.Time `json:"soundiizExpiresAt,omitempty"`
 }

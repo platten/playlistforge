@@ -54,13 +54,17 @@ describe("API client", () => {
     await api.refine("p", "more", "high");
     await api.removeTrack("p", "t");
     await api.replaceTrack("p", "t", "different", "xhigh");
-    await api.soundiiz("p", ["apple_music"]);
+    await api.soundiiz("p");
     await api.job("j");
     await api.cancelJob("j");
     expect(fetchMock).toHaveBeenCalledTimes(10);
     expect(
       fetchMock.mock.calls.some(([path]) => String(path).includes("a%2Fb")),
     ).toBe(true);
+    const handoff = fetchMock.mock.calls.find(([path]) =>
+      String(path).endsWith("/soundiiz"),
+    );
+    expect((handoff?.[1] as RequestInit).body).toBe("{}");
   });
   it("opens external links in a new browser context", async () => {
     const open = vi.spyOn(window, "open").mockImplementation(() => null);

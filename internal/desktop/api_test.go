@@ -28,7 +28,7 @@ func TestConfigAndCredentials(t *testing.T) {
 	keys := &fakeKeys{status: credentials.Status{Configured: true, Storage: "keyring"}}
 	api := New(context.Background(), nil, keys, fakeValidator{}, nil)
 	config := api.Config()
-	if !config.Credential.Configured || config.Model == "" || len(config.TrackCounts) != 6 || len(config.Destinations) != 4 || config.Pricing.Version == "" {
+	if !config.Credential.Configured || config.Model == "" || len(config.TrackCounts) != 6 || config.Pricing.Version == "" {
 		t.Fatalf("unexpected config: %+v", config)
 	}
 	status, err := api.SaveKey("sk-test", false)

@@ -52,11 +52,5 @@ CREATE TABLE IF NOT EXISTS revision_references (
     PRIMARY KEY (revision_id, reference_playlist_id)
 );
 
-CREATE TABLE IF NOT EXISTS destinations (
-    playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
-    destination TEXT NOT NULL,
-    PRIMARY KEY (playlist_id, destination)
-);
-
 CREATE INDEX IF NOT EXISTS idx_revisions_playlist ON revisions(playlist_id, revision_number);
 CREATE INDEX IF NOT EXISTS idx_tracks_revision ON tracks(revision_id, position);

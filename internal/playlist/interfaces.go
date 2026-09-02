@@ -16,6 +16,5 @@ type Repository interface {
 	Get(ctx context.Context, id string) (Playlist, error)
 	AddRevision(ctx context.Context, playlistID string, revision Revision) (Playlist, error)
 	DeleteTrack(ctx context.Context, playlistID, trackID string) (Playlist, error)
-	SetDestinations(ctx context.Context, playlistID string, destinations []string) error
 	SetSoundiiz(ctx context.Context, playlistID, url string, expiresAt int64) error
 }

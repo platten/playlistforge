@@ -22,11 +22,6 @@ import (
 
 var openAIKeyPattern = regexp.MustCompile(`(?i)\bsk-[a-z0-9_-]{4,}\b`)
 
-// Supported destination identifiers are persisted as stable, provider-neutral
-// values. Soundiiz receives a generic playlist and asks the user to choose the
-// actual destination on its site.
-var supportedDestinations = []string{"tidal", "qobuz", "spotify", "apple_music"}
-
 type importer interface {
 	Import(context.Context, playlist.Revision) (soundiiz.Result, error)
 }
@@ -221,12 +216,9 @@ func (s *Service) Replace(playlistID, trackID, prompt string, effort playlist.Ef
 	})
 }
 
-// Handoff queues creation of one generic Soundiiz import link. Destinations are
-// persisted as user intent; Soundiiz performs the actual service selection.
-func (s *Service) Handoff(playlistID string, destinations []string) (playlist.Job, error) {
-	if err := validateDestinations(destinations); err != nil {
-		return playlist.Job{}, err
-	}
+// Handoff queues creation of one generic Soundiiz import link. Soundiiz
+// performs catalog matching and destination selection on its site.
+func (s *Service) Handoff(playlistID string) (playlist.Job, error) {
 	return s.submit("Waiting for Soundiiz", func(ctx context.Context, jobID string) (string, error) {
 		current, err := s.repo.Get(ctx, playlistID)
 		if err != nil {
@@ -240,30 +232,11 @@ func (s *Service) Handoff(playlistID string, destinations []string) (playlist.Jo
 		if result.Tracks != len(current.CurrentRevision.Tracks) {
 			return "", fmt.Errorf("handoff accepted %d of %d tracks from Soundiiz", result.Tracks, len(current.CurrentRevision.Tracks))
 		}
-		if err := s.repo.SetDestinations(ctx, playlistID, destinations); err != nil {
-			return "", err
-		}
 		if err := s.repo.SetSoundiiz(ctx, playlistID, result.ShareURL, result.ExpiresAt); err != nil {
 			return "", err
 		}
 		return playlistID, nil
 	})
-}
-
-func validateDestinations(values []string) error {
-	if len(values) != 1 {
-		return errors.New("select exactly one destination")
-	}
-	if !slices.Contains(supportedDestinations, values[0]) {
-		return errors.New("unsupported destination")
-	}
-	return nil
-}
-
-// SupportedDestinations returns a copy so HTTP consumers cannot mutate the
-// business-rule allow-list.
-func SupportedDestinations() []string {
-	return slices.Clone(supportedDestinations)
 }
 
 type work func(context.Context, string) (string, error)

@@ -21,7 +21,7 @@ type DesktopBindings = {
     prompt: string,
     effort: Effort,
   ): Promise<Job>;
-  CreateSoundiizHandoff(id: string, destinations: string[]): Promise<Job>;
+  CreateSoundiizHandoff(id: string): Promise<Job>;
   GetJob(id: string): Promise<Job>;
   CancelJob(id: string): Promise<void>;
   OpenExternalURL(url: string): Promise<void>;
@@ -63,8 +63,8 @@ export function createDesktopAPI(): BackendAPI | undefined {
       desktopCall((backend) =>
         backend.ReplaceTrack(playlistId, trackId, prompt, effort),
       ),
-    soundiiz: (id, destinations) =>
-      desktopCall((backend) => backend.CreateSoundiizHandoff(id, destinations)),
+    soundiiz: (id) =>
+      desktopCall((backend) => backend.CreateSoundiizHandoff(id)),
     job: (id) => desktopCall((backend) => backend.GetJob(id)),
     cancelJob: (id) => desktopCall((backend) => backend.CancelJob(id)),
     openExternalURL: (url) =>

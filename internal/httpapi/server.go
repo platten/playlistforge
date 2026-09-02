@@ -80,12 +80,11 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"credential":   s.keys.Status(),
-		"model":        playlist.ModelGPTSol,
-		"trackCounts":  []int{20, 30, 40, 50, 60, 100},
-		"efforts":      []playlist.Effort{playlist.EffortMedium, playlist.EffortHigh, playlist.EffortXHigh, playlist.EffortMax},
-		"destinations": app.SupportedDestinations(),
-		"pricing":      map[string]any{"version": playlist.CurrentPricing.Version, "inputPerMillion": playlist.CurrentPricing.InputPerMillion, "cachedInputPerMillion": playlist.CurrentPricing.CachedInputPerMillion, "outputPerMillion": playlist.CurrentPricing.OutputPerMillion, "webSearchFeeKnown": playlist.CurrentPricing.WebSearchPerCall != nil},
+		"credential":  s.keys.Status(),
+		"model":       playlist.ModelGPTSol,
+		"trackCounts": []int{20, 30, 40, 50, 60, 100},
+		"efforts":     []playlist.Effort{playlist.EffortMedium, playlist.EffortHigh, playlist.EffortXHigh, playlist.EffortMax},
+		"pricing":     map[string]any{"version": playlist.CurrentPricing.Version, "inputPerMillion": playlist.CurrentPricing.InputPerMillion, "cachedInputPerMillion": playlist.CurrentPricing.CachedInputPerMillion, "outputPerMillion": playlist.CurrentPricing.OutputPerMillion, "webSearchFeeKnown": playlist.CurrentPricing.WebSearchPerCall != nil},
 	})
 }
 
@@ -210,14 +209,12 @@ func (s *Server) playlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(parts) == 2 && parts[1] == "soundiiz" && r.Method == http.MethodPost {
-		var body struct {
-			Destinations []string `json:"destinations"`
-		}
+		var body struct{}
 		if err := decodeJSON(w, r, &body); err != nil {
 			badRequest(w, err)
 			return
 		}
-		job, err := s.app.Handoff(id, body.Destinations)
+		job, err := s.app.Handoff(id)
 		if err != nil {
 			badRequest(w, err)
 			return

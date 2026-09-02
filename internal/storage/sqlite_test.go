@@ -68,9 +68,6 @@ func TestRepositoryLifecycle(t *testing.T) {
 	if _, err := repo.DeleteTrack(ctx, "p1", deleted.CurrentRevision.Tracks[0].ID); err == nil {
 		t.Fatal("removed the final track")
 	}
-	if err := repo.SetDestinations(ctx, "p1", []string{"tidal", "spotify", "apple_music"}); err != nil {
-		t.Fatal(err)
-	}
 	expires := time.Now().Add(time.Hour).Unix()
 	if err := repo.SetSoundiiz(ctx, "p1", "https://soundiiz.com/go/import-playlist/a", expires); err != nil {
 		t.Fatal(err)
@@ -79,7 +76,7 @@ func TestRepositoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Destinations) != 3 || got.SoundiizURL == nil || got.SoundiizExpires == nil {
+	if got.SoundiizURL == nil || got.SoundiizExpires == nil {
 		t.Fatalf("handoff not saved: %#v", got)
 	}
 }

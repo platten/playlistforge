@@ -143,9 +143,8 @@ func TestConfigAndCredentials(t *testing.T) {
 	if config["model"] != playlist.ModelGPTSol {
 		t.Fatalf("config=%#v", config)
 	}
-	destinations, ok := config["destinations"].([]any)
-	if !ok || len(destinations) != 4 || destinations[3] != "apple_music" {
-		t.Fatalf("destinations=%#v", config["destinations"])
+	if _, exists := config["destinations"]; exists {
+		t.Fatalf("obsolete destinations in config: %#v", config)
 	}
 	if got := perform(h.handler, http.MethodPost, "/api/config", "{}", true); got.Code != http.StatusMethodNotAllowed || got.Header().Get("Allow") != "GET" {
 		t.Fatalf("method=%d", got.Code)
@@ -243,7 +242,7 @@ func TestPlaylistWorkflow(t *testing.T) {
 	if awaitJob(t, h.service, job.ID).Status != playlist.JobSucceeded {
 		t.Fatal("refine failed")
 	}
-	response = perform(h.handler, http.MethodPost, "/api/playlists/"+done.PlaylistID+"/soundiiz", `{"destinations":["apple_music"]}`, true)
+	response = perform(h.handler, http.MethodPost, "/api/playlists/"+done.PlaylistID+"/soundiiz", `{}`, true)
 	if response.Code != 202 {
 		t.Fatalf("handoff=%d %s", response.Code, response.Body.String())
 	}
