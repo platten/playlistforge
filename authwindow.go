@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -101,13 +102,25 @@ func runAuth(req musicsource.AuthRequest) (string, error) {
 	}
 
 	slog.Info("streaming sign-in: opening window", "url", req.URL, "redirectPrefix", req.RedirectPrefix, "extract", req.ExtractJS != "")
-	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
+	opts := application.WebviewWindowOptions{
 		Title:  "Sign in",
 		Width:  width,
 		Height: height,
 		URL:    req.URL,
 		JS:     captureProbe(req),
-	})
+	}
+	if runtime.GOOS == "windows" {
+		// WebView2 injects options.JS only when options.HTML is also set (it
+		// becomes an AddScriptToExecuteOnDocumentCreated init script that then
+		// runs on every document). Bootstrap through a page that immediately
+		// redirects, so the capture probe is registered for the real sign-in
+		// page too. Linux/macOS inject options.JS on every navigation already.
+		opts.HTML = fmt.Sprintf(
+			`<!doctype html><meta charset="utf-8"><title>Sign in</title>`+
+				`<body style="background:#0b0c0a"></body>`+
+				`<script>location.replace(%q)</script>`, req.URL)
+	}
+	window := app.Window.NewWithOptions(opts)
 
 	closed := make(chan struct{}, 1)
 	window.OnWindowEvent(events.Common.WindowClosing, func(_ *application.WindowEvent) {
