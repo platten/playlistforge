@@ -28,6 +28,9 @@ export function BusyOverlay({
     };
   }, [visible]);
   if (!visible || !job) return null;
+  const total = job.total ?? 0;
+  const done = Math.min(job.completed ?? 0, total);
+  const percent = total > 0 ? Math.round((done / total) * 100) : 0;
   function keepFocus(event: KeyboardEvent) {
     if (event.key === "Tab") {
       event.preventDefault();
@@ -52,12 +55,34 @@ export function BusyOverlay({
           <span />
           <span />
         </div>
-        <p className="eyebrow">Working on your playlist</p>
-        <h2 id="busy-title">{job.phase}</h2>
-        <p>
-          Research-heavy playlists can take a minute or two. You can leave this
-          window open.
+        <p className="eyebrow">
+          {total > 0 ? "Syncing" : "Working on your playlist"}
         </p>
+        <h2 id="busy-title">{job.phase}</h2>
+        {total > 0 ? (
+          <>
+            <div
+              className="busy-progress"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={total}
+              aria-valuenow={done}
+            >
+              <div
+                className="busy-progress-fill"
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+            <p>
+              {done} of {total} playlists · you can leave this window open
+            </p>
+          </>
+        ) : (
+          <p>
+            Research-heavy playlists can take a minute or two. You can leave
+            this window open.
+          </p>
+        )}
         <button
           ref={cancelRef}
           className="button secondary"

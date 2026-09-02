@@ -169,6 +169,52 @@ func TestSyncHydratesPlaylistWithRepeatedTrackIDs(t *testing.T) {
 	}
 }
 
+func TestSyncSourceJobRunsWithProgress(t *testing.T) {
+	svc, _, tidal, sessions := newImportService(t)
+
+	tidal.Playlists = []musicsource.RemotePlaylist{
+		remote("p1", "Rainy", "e1", 2), remote("p2", "Sunny", "e1", 2), remote("p3", "Cloudy", "e1", 2),
+	}
+	tidal.Tracks = map[string][]playlist.Track{
+		"p1": isrcTracks("R", 2), "p2": isrcTracks("S", 2), "p3": isrcTracks("C", 2),
+	}
+
+	job, err := svc.SyncSourceJob(musicsource.KindTIDAL)
+	if err != nil {
+		t.Fatalf("SyncSourceJob: %v", err)
+	}
+	if job.Status != playlist.JobQueued && job.Status != playlist.JobRunning {
+		t.Fatalf("initial status = %q", job.Status)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	var final playlist.Job
+	for time.Now().Before(deadline) {
+		final, _ = svc.GetJob(job.ID)
+		if final.Status == playlist.JobSucceeded || final.Status == playlist.JobFailed {
+			break
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	if final.Status != playlist.JobSucceeded {
+		t.Fatalf("final status = %q (%s)", final.Status, final.Error)
+	}
+	if final.Total != 3 {
+		t.Fatalf("job total = %d, want 3", final.Total)
+	}
+	if items, _ := svc.List(context.Background()); len(items) != 3 {
+		t.Fatalf("imported %d playlists, want 3", len(items))
+	}
+
+	// Not connected -> rejected up front, no job spawned.
+	if err := sessions.Delete("tidal"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.SyncSourceJob(musicsource.KindTIDAL); err == nil {
+		t.Fatal("expected an error when the service is not connected")
+	}
+}
+
 func TestSyncMergesSameMusic(t *testing.T) {
 	svc, _, tidal, _ := newImportService(t)
 	ctx := context.Background()

@@ -328,26 +328,12 @@ export default function App() {
     setError({ message });
   }, []);
 
-  // Reload one streaming service: a synchronous, unpaid sync that does not go
-  // through `run` (no job, no busy overlay). Callers await it to drive a local
-  // spinner.
-  const syncSource = useCallback(
-    async (kind: string) => {
-      setError(null);
-      try {
-        await api.syncSource(kind);
-        await refresh();
-      } catch (reason) {
-        setError({
-          message:
-            reason instanceof Error
-              ? reason.message
-              : `Could not reload ${serviceLabel(kind)}`,
-        });
-      }
-    },
-    [refresh],
-  );
+  // Reload one streaming service. The backend runs it as a cancellable job with
+  // progress, so it goes through the same `run` lifecycle as a generation: the
+  // busy overlay shows the progress bar, then history refreshes.
+  const syncSource = (kind: string) => {
+    run(() => api.syncSource(kind));
+  };
 
   // Carry a Browse selection back to the composer's reference picker.
   const applyInspiration = useCallback((ids: string[]) => {
@@ -704,7 +690,7 @@ function HistoryPage({
 }: {
   history: Playlist[];
   connections: ConnectionStatus[];
-  syncSource: (kind: string) => Promise<void>;
+  syncSource: (kind: string) => void;
   navigate: (path: string) => void;
 }) {
   const groups = groupByCluster(history);
@@ -770,17 +756,16 @@ function HistoryPage({
 
 /**
  * The per-service Reload buttons shared by History and Browse. Only connected
- * services appear; the button spins while its sync runs. When nothing is
- * connected it points at Settings instead.
+ * services appear; the sync runs as a background job, so progress and
+ * cancellation live in the shared busy overlay rather than here.
  */
 function ReloadControls({
   connections,
   syncSource,
 }: {
   connections: ConnectionStatus[];
-  syncSource: (kind: string) => Promise<void>;
+  syncSource: (kind: string) => void;
 }) {
-  const [busy, setBusy] = useState<string | null>(null);
   const connected = connections.filter((c) => c.connected);
   if (connected.length === 0) return null;
   return (
@@ -789,19 +774,9 @@ function ReloadControls({
         <button
           key={c.kind}
           className="button secondary"
-          disabled={busy !== null}
-          onClick={async () => {
-            setBusy(c.kind);
-            try {
-              await syncSource(c.kind);
-            } finally {
-              setBusy(null);
-            }
-          }}
+          onClick={() => syncSource(c.kind)}
         >
-          {busy === c.kind
-            ? `Reloading ${serviceLabel(c.kind)}…`
-            : `Reload ${serviceLabel(c.kind)}`}
+          Reload {serviceLabel(c.kind)}
         </button>
       ))}
     </div>
@@ -823,7 +798,7 @@ function BrowsePage({
 }: {
   history: Playlist[];
   connections: ConnectionStatus[];
-  syncSource: (kind: string) => Promise<void>;
+  syncSource: (kind: string) => void;
   onUseAsInspiration: (ids: string[]) => void;
   navigate: (path: string) => void;
 }) {

@@ -53,9 +53,12 @@ type Service struct {
 	cancels   map[string]context.CancelFunc
 	// gate serializes paid, long-running operations. A single local user gets
 	// predictable API spend and SQLite writes never compete with another job.
-	gate    chan struct{}
-	workers sync.WaitGroup
-	now     func() time.Time
+	gate chan struct{}
+	// syncGate serializes streaming syncs among themselves without blocking, or
+	// being blocked by, paid work.
+	syncGate chan struct{}
+	workers  sync.WaitGroup
+	now      func() time.Time
 }
 
 // New constructs a Service whose jobs are cancelled when parent is cancelled.
@@ -67,7 +70,7 @@ func New(parent context.Context, repo playlist.Repository, generator playlist.Ge
 		sessions: sessions, sources: sources, logger: logger,
 		ctx: ctx, cancel: cancel,
 		jobs: make(map[string]playlist.Job), cancels: make(map[string]context.CancelFunc),
-		gate: make(chan struct{}, 1), now: time.Now,
+		gate: make(chan struct{}, 1), syncGate: make(chan struct{}, 1), now: time.Now,
 	}
 }
 
@@ -287,7 +290,17 @@ func (s *Service) Handoff(playlistID string) (playlist.Job, error) {
 
 type work func(context.Context, string) (string, error)
 
+// submit starts a paid, gated background job.
 func (s *Service) submit(phase string, fn work) (playlist.Job, error) {
+	return s.startJob(phase, fn, s.gate)
+}
+
+// submitSync starts a streaming-sync background job on its own gate.
+func (s *Service) submitSync(phase string, fn work) (playlist.Job, error) {
+	return s.startJob(phase, fn, s.syncGate)
+}
+
+func (s *Service) startJob(phase string, fn work, gate chan struct{}) (playlist.Job, error) {
 	id := uuid.NewString()
 	job := playlist.Job{ID: id, Status: playlist.JobQueued, Phase: phase}
 	ctx, cancel := context.WithCancel(s.ctx)
@@ -296,19 +309,19 @@ func (s *Service) submit(phase string, fn work) (playlist.Job, error) {
 	s.cancels[id] = cancel
 	s.mu.Unlock()
 	s.workers.Add(1)
-	go s.run(ctx, id, fn)
+	go s.run(ctx, id, fn, gate)
 	return job, nil
 }
 
-func (s *Service) run(ctx context.Context, id string, fn work) {
+func (s *Service) run(ctx context.Context, id string, fn work, gate chan struct{}) {
 	defer s.workers.Done()
 	select {
-	case s.gate <- struct{}{}:
+	case gate <- struct{}{}:
 	case <-ctx.Done():
 		s.finish(id, "", ctx.Err())
 		return
 	}
-	defer func() { <-s.gate }()
+	defer func() { <-gate }()
 	now := s.now().UTC()
 	s.mu.Lock()
 	job := s.jobs[id]
@@ -324,6 +337,15 @@ func (s *Service) phase(id, phase string) {
 	s.mu.Lock()
 	job := s.jobs[id]
 	job.Phase = phase
+	s.jobs[id] = job
+	s.mu.Unlock()
+}
+
+// progress records how far an iterating job has got, for a progress bar.
+func (s *Service) progress(id string, completed, total int) {
+	s.mu.Lock()
+	job := s.jobs[id]
+	job.Completed, job.Total = completed, total
 	s.jobs[id] = job
 	s.mu.Unlock()
 }

@@ -67,11 +67,11 @@ function installBindings() {
     DisconnectService: vi.fn(() => Promise.resolve()),
     SyncSource: vi.fn(() =>
       Promise.resolve({
-        added: 0,
-        updated: 0,
-        deleted: 0,
-        merged: 0,
-        syncedAt: "2026-09-01T00:00:00Z",
+        id: "sync-job",
+        status: "running",
+        phase: "TIDAL · Rainy",
+        completed: 1,
+        total: 3,
       }),
     ),
     UnlinkSource: vi.fn(() => Promise.resolve({})),
@@ -335,6 +335,26 @@ describe("App", () => {
     expect(
       screen.getByRole("button", { name: /use as inspiration/i }),
     ).toBeInTheDocument();
+  });
+
+  it("starts a background sync job from a Reload button", async () => {
+    bindings.Connections.mockResolvedValue([
+      { kind: "tidal", available: true, connected: true, displayName: "Me" },
+      { kind: "qobuz", available: false, connected: false, displayName: "" },
+    ]);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "History" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Reload TIDAL" }),
+    );
+
+    await waitFor(() =>
+      expect(bindings.SyncSource).toHaveBeenCalledWith("tidal"),
+    );
+    // run() refreshes history once the job resolves.
+    await waitFor(() =>
+      expect(bindings.ListPlaylists.mock.calls.length).toBeGreaterThan(1),
+    );
   });
 
   it("connects and disconnects a streaming service from settings", async () => {

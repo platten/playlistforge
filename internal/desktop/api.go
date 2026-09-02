@@ -194,10 +194,10 @@ func (a *API) DisconnectService(kind string) error {
 	return a.service.Disconnect(musicsource.Kind(kind))
 }
 
-// SyncSource refreshes the local mirror of one streaming service and returns a
-// summary of what changed. Synchronous; no OpenAI cost.
-func (a *API) SyncSource(kind string) (app.SyncResult, error) {
-	return a.service.SyncSource(a.ctx, musicsource.Kind(kind))
+// SyncSource starts a background job that refreshes the local mirror of one
+// streaming service, reporting progress. No OpenAI cost.
+func (a *API) SyncSource(kind string) (playlist.Job, error) {
+	return a.service.SyncSourceJob(musicsource.Kind(kind))
 }
 
 // UnlinkSource detaches one streaming service from a merged playlist and

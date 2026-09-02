@@ -5,14 +5,7 @@
  * `waitForJob` polls it to a terminal state.
  */
 import { Call } from "@wailsio/runtime";
-import type {
-  Config,
-  ConnectionStatus,
-  Effort,
-  Job,
-  Playlist,
-  SyncResult,
-} from "./types";
+import type { Config, ConnectionStatus, Effort, Job, Playlist } from "./types";
 
 /** The desktop backend surface, mirroring the exported methods on Go's `desktop.API`. */
 export interface BackendAPI {
@@ -44,7 +37,8 @@ export interface BackendAPI {
   connections(): Promise<ConnectionStatus[]>;
   connectService(kind: string): Promise<ConnectionStatus>;
   disconnectService(kind: string): Promise<void>;
-  syncSource(kind: string): Promise<SyncResult>;
+  /** Starts a background sync job; poll it with `waitForJob`. */
+  syncSource(kind: string): Promise<Job>;
   unlinkSource(
     playlistId: string,
     kind: string,

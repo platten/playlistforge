@@ -1440,6 +1440,20 @@ dd {
   margin-top: 1.6rem;
 }
 
+.busy-progress {
+  height: 8px;
+  margin: 1.1rem 0 0.7rem;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.busy-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.3s var(--ease);
+}
+
 .eq {
   display: flex;
   align-items: flex-end;

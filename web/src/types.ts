@@ -80,19 +80,13 @@ export interface ConnectionStatus {
   displayName: string;
 }
 
-/** Summary returned by a per-service Reload. */
-export interface SyncResult {
-  added: number;
-  updated: number;
-  deleted: number;
-  merged: number;
-  syncedAt: string;
-}
-
 export interface Job {
   id: string;
   status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
   phase: string;
+  /** For jobs that iterate a known number of items (a streaming sync). */
+  completed?: number;
+  total?: number;
   playlistId?: string;
   error?: string;
   errorCode?: string;

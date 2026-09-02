@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -20,12 +21,45 @@ type SyncResult struct {
 	SyncedAt time.Time `json:"syncedAt"`
 }
 
-// SyncSource refreshes the local mirror of one streaming service: new playlists
-// are imported and matched against existing music, changed ones are
-// re-hydrated, and playlists removed upstream are deleted. Track lists are
-// fetched for new and changed playlists only; unchanged ones stay lazy. It does
-// no OpenAI work and runs synchronously.
+// syncReporter receives sync progress: how many playlists are done out of how
+// many, and a short phase label. It is nil for the internal synchronous path.
+type syncReporter func(completed, total int, phase string)
+
+// SyncSourceJob refreshes the local mirror of one streaming service as a
+// cancellable background job with progress. The connection is checked up front
+// so an unconnected service fails immediately rather than through the job.
+func (s *Service) SyncSourceJob(kind musicsource.Kind) (playlist.Job, error) {
+	if _, err := s.session(kind); err != nil {
+		return playlist.Job{}, err
+	}
+	if _, err := s.provider(kind); err != nil {
+		return playlist.Job{}, err
+	}
+	label := strings.ToUpper(string(kind))
+	return s.submitSync("Preparing to sync "+label, func(ctx context.Context, jobID string) (string, error) {
+		_, err := s.syncSource(ctx, kind, func(done, total int, phase string) {
+			s.progress(jobID, done, total)
+			s.phase(jobID, phase)
+		})
+		return "", err
+	})
+}
+
+// SyncSource runs a sync synchronously and returns a summary. Used internally by
+// UnlinkSource; the user-facing path is SyncSourceJob.
 func (s *Service) SyncSource(ctx context.Context, kind musicsource.Kind) (SyncResult, error) {
+	return s.syncSource(ctx, kind, nil)
+}
+
+// syncSource imports new playlists (matching them against existing music),
+// re-hydrates changed ones, and deletes playlists removed upstream. Track lists
+// are fetched for new and changed playlists only. It does no OpenAI work.
+func (s *Service) syncSource(ctx context.Context, kind musicsource.Kind, report syncReporter) (SyncResult, error) {
+	if report == nil {
+		report = func(int, int, string) {}
+	}
+	label := strings.ToUpper(string(kind))
+
 	var result SyncResult
 	session, err := s.session(kind)
 	if err != nil {
@@ -35,6 +69,7 @@ func (s *Service) SyncSource(ctx context.Context, kind musicsource.Kind) (SyncRe
 	if err != nil {
 		return result, err
 	}
+	report(0, 0, "Listing "+label+" playlists")
 	remote, err := provider.ListPlaylists(ctx, session)
 	if err != nil {
 		return result, fmt.Errorf("list %s playlists: %w", kind, err)
@@ -51,7 +86,11 @@ func (s *Service) SyncSource(ctx context.Context, kind musicsource.Kind) (SyncRe
 
 	now := s.now().UTC()
 	seen := make(map[string]struct{}, len(remote))
-	for _, rp := range remote {
+	for i, rp := range remote {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
+		report(i, len(remote), syncPhase(label, rp.Title))
 		seen[rp.ExternalID] = struct{}{}
 		in := playlist.SourceInput{
 			Kind: string(kind), ExternalID: rp.ExternalID, ExternalURL: rp.URL,
@@ -88,6 +127,7 @@ func (s *Service) SyncSource(ctx context.Context, kind musicsource.Kind) (SyncRe
 		}
 	}
 
+	report(len(remote), len(remote), "Removing playlists deleted on "+label)
 	for externalID := range byExternal {
 		if _, ok := seen[externalID]; ok {
 			continue
@@ -103,6 +143,18 @@ func (s *Service) SyncSource(ctx context.Context, kind musicsource.Kind) (SyncRe
 
 	result.SyncedAt = now
 	return result, nil
+}
+
+// syncPhase is the per-playlist status line shown while a sync runs.
+func syncPhase(label, title string) string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return "Syncing " + label
+	}
+	if len(title) > 60 {
+		title = title[:57] + "…"
+	}
+	return label + " · " + title
 }
 
 // sourceChanged decides whether a linked playlist needs re-hydration.

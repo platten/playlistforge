@@ -173,11 +173,15 @@ const (
 	JobCancelled JobStatus = "cancelled"
 )
 
-// Job is a client-visible snapshot of asynchronous work.
+// Job is a client-visible snapshot of asynchronous work. Completed and Total
+// drive a progress bar for jobs that iterate a known number of items (a
+// streaming sync); they stay zero for indeterminate work.
 type Job struct {
 	ID         string     `json:"id"`
 	Status     JobStatus  `json:"status"`
 	Phase      string     `json:"phase"`
+	Completed  int        `json:"completed,omitempty"`
+	Total      int        `json:"total,omitempty"`
 	PlaylistID string     `json:"playlistId,omitempty"`
 	Error      string     `json:"error,omitempty"`
 	ErrorCode  string     `json:"errorCode,omitempty"`
