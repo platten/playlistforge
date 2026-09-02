@@ -78,6 +78,9 @@ func (p *Provider) AuthRequest() (musicsource.AuthRequest, error) {
 	return musicsource.AuthRequest{
 		URL:       p.playBase + "/login",
 		ExtractJS: `(function(){try{var s=window.localStorage.getItem("localuser");if(!s)return "";var o=JSON.parse(s);return (o&&o.token)?s:"";}catch(e){return "";}})()`,
+		// The Qobuz web player refuses to render below ~1024px wide.
+		Width:  1200,
+		Height: 860,
 	}, nil
 }
 

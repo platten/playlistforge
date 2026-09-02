@@ -74,10 +74,17 @@ func runAuth(req musicsource.AuthRequest) (string, error) {
 	if app == nil {
 		return "", errors.New("application is not running")
 	}
+	width, height := req.Width, req.Height
+	if width <= 0 {
+		width = 520
+	}
+	if height <= 0 {
+		height = 720
+	}
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "Sign in",
-		Width:  520,
-		Height: 720,
+		Width:  width,
+		Height: height,
 		URL:    req.URL,
 	})
 

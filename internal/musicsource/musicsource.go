@@ -62,6 +62,10 @@ type AuthRequest struct {
 	// navigation; a non-empty result is handed to Complete. Used when the
 	// service has no OAuth redirect (the value lives in page state).
 	ExtractJS string
+	// Width and Height, when non-zero, override the sign-in window's initial
+	// size. Some services (Qobuz) refuse to render below a minimum width.
+	Width  int
+	Height int
 }
 
 // Provider adapts one streaming service to playlist reads.

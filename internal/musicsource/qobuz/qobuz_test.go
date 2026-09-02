@@ -49,6 +49,9 @@ func TestAuthRequest(t *testing.T) {
 	if req.RedirectPrefix != "" || req.ExtractJS == "" {
 		t.Fatalf("expected an ExtractJS probe, got %+v", req)
 	}
+	if req.Width < 1024 {
+		t.Fatalf("sign-in window too narrow for the Qobuz web player: %d", req.Width)
+	}
 }
 
 func TestCompleteScrapesAppIDOnce(t *testing.T) {
