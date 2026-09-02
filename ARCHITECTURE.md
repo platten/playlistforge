@@ -158,4 +158,4 @@ bash scripts/build-desktop.sh
 pwsh -File scripts/build-desktop.ps1
 ```
 
-Use `--skip-tests` or `-SkipTests` only when the corresponding test script has already succeeded for the same source state. The build scripts write artifacts under `build/bin`; Linux `deb`/`rpm`/AppImage packaging is included by `scripts/package-linux.sh`.
+Use `--skip-tests` or `-SkipTests` only when the corresponding test script has already succeeded for the same source state. The build scripts write artifacts under `build/bin`; Linux `deb`/`rpm`/AppImage packaging is included by `scripts/package-linux.sh`. Windows builds produce amd64 and arm64 NSIS installers by default; `-SkipInstaller` builds only the portable executables.
