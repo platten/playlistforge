@@ -366,7 +366,9 @@ main {
   padding: clamp(2.5rem, 6vw, 5.5rem) clamp(1.1rem, 4vw, 3.4rem);
 }
 main > * {
-  animation: rise 0.5s var(--ease) both;
+  /* Opacity only: a translate here briefly extends the page past the viewport
+     on a full-height view and flashes a scrollbar during the transition. */
+  animation: fade 0.4s var(--ease) both;
 }
 @keyframes rise {
   from {
@@ -739,11 +741,6 @@ select {
 .button:hover:not(:disabled) {
   transform: translateY(-1px);
 }
-.button:disabled {
-  opacity: 0.5;
-  filter: grayscale(0.4);
-  cursor: not-allowed;
-}
 .button.primary {
   background: var(--accent);
   color: var(--accent-contrast);
@@ -787,6 +784,15 @@ select {
 }
 .button.ghost:hover:not(:disabled) {
   color: var(--text);
+}
+/* One quiet, obviously-inactive state for every variant (defined last so it
+   wins over the variant colours above), rather than a washed-out tint. */
+.button:disabled {
+  cursor: not-allowed;
+  background: var(--surface-3);
+  color: var(--text-dim);
+  border-color: var(--border);
+  box-shadow: none;
 }
 
 /* ----------------------------------------------------------------------------
@@ -1051,7 +1057,9 @@ dd {
   inset: 0;
   display: grid;
   /* "safe" keeps a taller-than-viewport dialog from being clipped at the top
-     when the grid tries to centre it. */
+     when the grid tries to centre it. A scrollbar appears only if the dialog
+     itself is taller than the window; the page behind is frozen while either
+     overlay is open, so its scrollbar can't show beside the centred card. */
   place-items: safe center;
   overflow-y: auto;
   padding: 1.5rem;
