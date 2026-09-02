@@ -1,44 +1,23 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Call } from "@wailsio/runtime";
 import { api, waitForJob } from "./api";
 
-function installBindings() {
-  const result = Promise.resolve({});
-  const bindings = {
-    Config: vi.fn(() => result),
-    SaveKey: vi.fn(() => result),
-    DeleteKey: vi.fn(() => Promise.resolve()),
-    ListPlaylists: vi.fn(() => Promise.resolve([])),
-    GetPlaylist: vi.fn(() => result),
-    Generate: vi.fn(() => result),
-    Refine: vi.fn(() => result),
-    RemoveTrack: vi.fn(() => result),
-    ReplaceTrack: vi.fn(() => result),
-    CreateSoundiizHandoff: vi.fn(() => result),
-    GetJob: vi.fn(() => result),
-    CancelJob: vi.fn(() => Promise.resolve()),
-    OpenExternalURL: vi.fn(() => Promise.resolve()),
-  };
-  Object.defineProperty(window, "go", {
-    configurable: true,
-    value: { desktop: { API: bindings } },
-  });
-  return bindings;
-}
+vi.mock("@wailsio/runtime", () => ({
+  Call: { ByName: vi.fn() },
+}));
+
+const byName = vi.mocked(Call.ByName);
+const PREFIX = "playlistforge/internal/desktop.API.";
 
 describe("Wails API adapter", () => {
+  beforeEach(() => {
+    byName.mockResolvedValue({} as never);
+  });
   afterEach(() => {
-    Reflect.deleteProperty(window, "go");
     vi.restoreAllMocks();
   });
 
-  it("fails clearly when Wails bindings are unavailable", async () => {
-    await expect(api.config()).rejects.toThrow(
-      "Wails desktop bindings are unavailable",
-    );
-  });
-
-  it("delegates the complete UI contract to Go bindings", async () => {
-    const bindings = installBindings();
+  it("delegates the complete UI contract to the bound Go service", async () => {
     await api.config();
     await api.saveKey("sk-test", false);
     await api.deleteKey();
@@ -57,38 +36,42 @@ describe("Wails API adapter", () => {
     await api.job("j");
     await api.cancelJob("j");
     await api.openExternalURL("https://soundiiz.com/go/import-playlist/a");
-    expect(bindings.SaveKey).toHaveBeenCalledWith("sk-test", false);
-    expect(bindings.ReplaceTrack).toHaveBeenCalledWith(
+
+    expect(byName).toHaveBeenCalledWith(`${PREFIX}Config`);
+    expect(byName).toHaveBeenCalledWith(`${PREFIX}SaveKey`, "sk-test", false);
+    expect(byName).toHaveBeenCalledWith(`${PREFIX}ListPlaylists`);
+    expect(byName).toHaveBeenCalledWith(
+      `${PREFIX}ReplaceTrack`,
       "p",
       "t",
       "different",
       "xhigh",
     );
-    expect(bindings.CreateSoundiizHandoff).toHaveBeenCalledWith("p");
-    expect(bindings.OpenExternalURL).toHaveBeenCalledOnce();
+    expect(byName).toHaveBeenCalledWith(`${PREFIX}CreateSoundiizHandoff`, "p");
+    expect(byName).toHaveBeenCalledWith(
+      `${PREFIX}OpenExternalURL`,
+      "https://soundiiz.com/go/import-playlist/a",
+    );
   });
 
-  it("preserves Error rejections from Go bindings", async () => {
-    const bindings = installBindings();
-    bindings.Config.mockRejectedValueOnce(new Error("backend failed") as never);
+  it("preserves Error rejections from the runtime", async () => {
+    byName.mockRejectedValueOnce(new Error("backend failed") as never);
     await expect(api.config()).rejects.toThrow("backend failed");
   });
 
-  it("normalizes non-Error binding rejections", async () => {
-    const bindings = installBindings();
-    bindings.Config.mockRejectedValueOnce("backend failed" as never);
+  it("normalizes non-Error runtime rejections", async () => {
+    byName.mockRejectedValueOnce("backend failed" as never);
     await expect(api.config()).rejects.toThrow("backend failed");
   });
 
   it("polls jobs through success and reports updates", async () => {
-    const bindings = installBindings();
     const timer = vi
       .spyOn(window, "setTimeout")
       .mockImplementation((handler: TimerHandler) => {
         if (typeof handler === "function") handler();
         return 1;
       });
-    bindings.GetJob.mockResolvedValueOnce({
+    byName.mockResolvedValueOnce({
       id: "j",
       status: "succeeded",
       phase: "Complete",

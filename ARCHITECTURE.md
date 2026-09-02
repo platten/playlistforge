@@ -12,7 +12,7 @@ This document records the boundaries and invariants that are easy to lose when c
 
 ## Technology stack
 
-The backend uses Go 1.27, Wails 2.15, Zap logging, the official OpenAI Go SDK, a platform-keyring adapter, and the pure-Go `modernc.org/sqlite` driver. The frontend uses React 19, TypeScript 6, and Vite 8. Vitest, Testing Library, jest-axe, ESLint, and Prettier provide frontend quality gates.
+The backend uses Go 1.27, Wails v3 (`v3.0.0-beta.16`), Zap logging, the official OpenAI Go SDK, a platform-keyring adapter, and the pure-Go `modernc.org/sqlite` driver. The frontend uses React 19, TypeScript 6, and Vite 8. Vitest, Testing Library, jest-axe, ESLint, and Prettier provide frontend quality gates.
 
 Exact dependency versions belong in `go.mod`, `go.sum`, `web/package.json`, and `web/pnpm-lock.yaml`; those files are authoritative when this overview and a dependency manifest disagree.
 
@@ -34,12 +34,12 @@ Wails desktop executable
 
 1. pnpm installs the locked frontend dependency graph.
 2. TypeScript checks the frontend and Vite emits hashed assets into `internal/webui/dist`.
-3. The repository-root `main.go` embeds those assets, constructs the application runtime, binds `internal/desktop.API`, and starts Wails.
-4. Wails packages the executable with the appropriate native webview resources.
+3. The repository-root `main.go` embeds those assets, constructs the application runtime, registers `internal/desktop.API` as a Wails v3 service, and starts the application.
+4. `go build` links the executable against the target platform's native webview; `scripts/build-desktop.*` then wrap it in platform packages.
 
 The frontend build must finish before Go compilation. A missing `internal/webui/dist` is a build error by design, preventing an application without its interface from being shipped.
 
-At runtime, React calls the typed adapter in `web/src/api.ts`. That adapter delegates exclusively to the Go methods Wails injects for `internal/desktop.API`; there is no HTTP server or browser transport.
+At runtime, React calls the typed adapter in `web/src/api.ts`. That adapter delegates exclusively to `internal/desktop.API` through the Wails v3 runtime (`@wailsio/runtime` `Call.ByName`); there is no HTTP server or browser transport.
 
 ```text
 React ──► Wails bindings ──► internal/desktop ──► internal/app
@@ -132,13 +132,13 @@ Native desktop builds run on a runner for each target operating system:
 
 | Operating system | Desktop artifact |
 | --- | --- |
-| Windows | AMD64 executable, ZIP, and NSIS installer |
+| Windows | AMD64 executable and ZIP |
 | macOS | Universal application ZIP for Intel and Apple Silicon |
 | Linux | AMD64 deb, rpm, and AppImage packages |
 
-The Linux Wails stage links WebKitGTK 4.1. `scripts/package-linux.sh` uses pinned nFPM and AppImage tooling, and packages the desktop entry, application icon, AppStream metadata, and distribution-specific GTK/WebKit dependencies.
+The Linux build links WebKitGTK 4.1 through the `gtk3` build tag (Wails v3 otherwise defaults to GTK4 / WebKitGTK 6.0). `scripts/package-linux.sh` uses pinned nFPM and AppImage tooling, and packages the desktop entry, application icon, AppStream metadata, and distribution-specific GTK/WebKit dependencies.
 
-Pushing a `v*` tag runs a fresh quality gate and all three native builds. The publish job downloads only desktop artifacts, submits the versioned Windows installer to VirusTotal, writes `SHA256SUMS.txt`, and creates or updates the GitHub Release.
+Pushing a `v*` tag runs a fresh quality gate and all three native builds. The publish job downloads only desktop artifacts, writes `SHA256SUMS.txt`, and creates or updates the GitHub Release.
 
 ## Quality gates
 
@@ -158,4 +158,4 @@ bash scripts/build-desktop.sh
 pwsh -File scripts/build-desktop.ps1
 ```
 
-Use `--skip-tests` or `-SkipTests` only when the corresponding test script has already succeeded for the same source state. Wails writes artifacts under `build/bin`; Linux packaging and the Windows installer are included by their platform-specific scripts.
+Use `--skip-tests` or `-SkipTests` only when the corresponding test script has already succeeded for the same source state. The build scripts write artifacts under `build/bin`; Linux `deb`/`rpm`/AppImage packaging is included by `scripts/package-linux.sh`.

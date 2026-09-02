@@ -1,4 +1,4 @@
-// Command playlist-forge-desktop runs Playlist Forge as a native Wails app.
+// Command playlist-forge runs Playlist Forge as a native Wails v3 desktop app.
 package main
 
 import (
@@ -6,12 +6,10 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"playlistforge/internal/bootstrap"
 	"playlistforge/internal/desktop"
@@ -20,47 +18,73 @@ import (
 //go:embed all:internal/webui/dist
 var desktopAssets embed.FS
 
-type desktopLifecycle struct {
-	ctx context.Context
-}
+// version is overridden at build time with -ldflags "-X main.version=...".
+var version = "dev"
 
-func (l *desktopLifecycle) startup(ctx context.Context) { l.ctx = ctx }
-
-func runDesktop() (runErr error) {
-	application, err := bootstrap.New(bootstrap.Options{Context: context.Background(), ApplicationDir: "playlist-forge"})
+func run() (runErr error) {
+	runtime, err := bootstrap.New(bootstrap.Options{
+		Context:        context.Background(),
+		ApplicationDir: "playlist-forge",
+	})
 	if err != nil {
 		return err
 	}
 	defer func() {
-		if err := application.Close(); runErr == nil {
-			runErr = err
+		if closeErr := runtime.Close(); runErr == nil {
+			runErr = closeErr
 		}
 	}()
-	lifecycle := &desktopLifecycle{}
-	desktopAPI := desktop.New(context.Background(), application.Service, application.Keys, application.Validator, func(raw string) {
-		if lifecycle.ctx != nil {
-			wailsruntime.BrowserOpenURL(lifecycle.ctx, raw)
-		}
-	})
+
 	assets, err := fs.Sub(desktopAssets, "internal/webui/dist")
 	if err != nil {
 		return fmt.Errorf("open desktop assets: %w", err)
 	}
-	return wails.Run(&options.App{
+
+	// Wails v3 has no per-call context on the frontend transport, so the bound
+	// service keeps the process context captured here. External URLs are opened
+	// through the running application's browser manager.
+	desktopAPI := desktop.New(
+		context.Background(),
+		runtime.Service,
+		runtime.Keys,
+		runtime.Validator,
+		func(raw string) {
+			if app := application.Get(); app != nil {
+				_ = app.Browser.OpenURL(raw)
+			}
+		},
+	)
+
+	app := application.New(application.Options{
+		Name:        "Playlist Forge",
+		Description: "Local-first AI playlist curation",
+		Services: []application.Service{
+			application.NewService(desktopAPI),
+		},
+		Assets: application.AssetOptions{
+			Handler: application.BundledAssetFileServer(assets),
+		},
+		LogLevel: slog.LevelWarn,
+		Mac: application.MacOptions{
+			ApplicationShouldTerminateAfterLastWindowClosed: true,
+		},
+	})
+
+	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Playlist Forge",
 		Width:            1280,
 		Height:           800,
 		MinWidth:         900,
 		MinHeight:        640,
-		BackgroundColour: &options.RGBA{R: 16, G: 17, B: 15, A: 255},
-		AssetServer:      &assetserver.Options{Assets: assets},
-		OnStartup:        lifecycle.startup,
-		Bind:             []interface{}{desktopAPI},
+		BackgroundColour: application.NewRGB(11, 12, 10),
+		URL:              "/",
 	})
+
+	return app.Run()
 }
 
 func main() {
-	if err := runDesktop(); err != nil {
+	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "playlist-forge:", err)
 		os.Exit(1)
 	}

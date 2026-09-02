@@ -1,8 +1,13 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "jest-axe";
+import { Call } from "@wailsio/runtime";
 import App from "./App";
 import type { Config } from "./types";
+
+vi.mock("@wailsio/runtime", () => ({
+  Call: { ByName: vi.fn() },
+}));
 
 const config: Config = {
   credential: { configured: true, storage: "keyring" },
@@ -18,6 +23,9 @@ const config: Config = {
   },
 };
 
+// The Wails v3 runtime routes every bound call through Call.ByName with a
+// "<package>.<type>.<method>" name; this fake dispatches on the trailing
+// method so tests keep asserting against a plain bindings object.
 function installBindings() {
   const bindings = {
     Config: vi.fn(() => Promise.resolve(config)),
@@ -34,10 +42,17 @@ function installBindings() {
     CancelJob: vi.fn(() => Promise.resolve()),
     OpenExternalURL: vi.fn(() => Promise.resolve()),
   };
-  Object.defineProperty(window, "go", {
-    configurable: true,
-    value: { desktop: { API: bindings } },
-  });
+  vi.mocked(Call.ByName).mockImplementation(((
+    name: string,
+    ...args: unknown[]
+  ) => {
+    const method = name.slice(name.lastIndexOf(".") + 1);
+    const handler = (bindings as Record<string, (...a: unknown[]) => unknown>)[
+      method
+    ];
+    if (!handler) return Promise.reject(new Error(`unbound method: ${name}`));
+    return handler(...args);
+  }) as typeof Call.ByName);
   return bindings;
 }
 
@@ -50,7 +65,7 @@ describe("App", () => {
     bindings = installBindings();
   });
   afterEach(() => {
-    Reflect.deleteProperty(window, "go");
+    vi.mocked(Call.ByName).mockReset();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });

@@ -1,3 +1,4 @@
+import { Call } from "@wailsio/runtime";
 import type { Config, Effort, Job, Playlist } from "./types";
 
 export interface BackendAPI {
@@ -26,73 +27,37 @@ export interface BackendAPI {
   openExternalURL(url: string): Promise<void>;
 }
 
-type DesktopBindings = {
-  Config(): Promise<Config>;
-  SaveKey(key: string, allowPlaintext: boolean): Promise<Config["credential"]>;
-  DeleteKey(): Promise<void>;
-  ListPlaylists(): Promise<Playlist[]>;
-  GetPlaylist(id: string): Promise<Playlist>;
-  Generate(body: {
-    prompt: string;
-    trackCount: number;
-    effort: Effort;
-    referenceIds: string[];
-  }): Promise<Job>;
-  Refine(id: string, prompt: string, effort: Effort): Promise<Job>;
-  RemoveTrack(playlistId: string, trackId: string): Promise<Playlist>;
-  ReplaceTrack(
-    playlistId: string,
-    trackId: string,
-    prompt: string,
-    effort: Effort,
-  ): Promise<Job>;
-  CreateSoundiizHandoff(id: string): Promise<Job>;
-  GetJob(id: string): Promise<Job>;
-  CancelJob(id: string): Promise<void>;
-  OpenExternalURL(url: string): Promise<void>;
-};
+// Wails v3 keys every bound method by "<package path>.<type>.<method>". This is
+// the service registered in main.go; keeping the adapter narrow stops the
+// runtime's call convention from leaking into React components.
+const SERVICE = "playlistforge/internal/desktop.API";
 
-function desktopBindings(): DesktopBindings | undefined {
-  return (
-    window as typeof window & {
-      go?: { desktop?: { API?: DesktopBindings } };
-    }
-  ).go?.desktop?.API;
-}
-
-async function desktopCall<T>(operation: (api: DesktopBindings) => Promise<T>) {
-  const bindings = desktopBindings();
-  if (!bindings) throw new Error("Wails desktop bindings are unavailable");
+async function invoke<T>(method: string, ...args: unknown[]): Promise<T> {
   try {
-    return await operation(bindings);
+    return (await Call.ByName(`${SERVICE}.${method}`, ...args)) as T;
   } catch (reason) {
     throw reason instanceof Error ? reason : new Error(String(reason));
   }
 }
 
-// Wails is the only supported runtime. Keeping this adapter typed and narrow
-// prevents generated binding details from leaking into React components.
+// Wails is the only supported runtime. Browser previews have no bindings, so
+// every call rejects there with the runtime's own error.
 export const api: BackendAPI = {
-  config: () => desktopCall((backend) => backend.Config()),
-  saveKey: (key, allowPlaintext) =>
-    desktopCall((backend) => backend.SaveKey(key, allowPlaintext)),
-  deleteKey: () => desktopCall((backend) => backend.DeleteKey()),
-  playlists: () => desktopCall((backend) => backend.ListPlaylists()),
-  playlist: (id) => desktopCall((backend) => backend.GetPlaylist(id)),
-  generate: (body) => desktopCall((backend) => backend.Generate(body)),
-  refine: (id, prompt, effort) =>
-    desktopCall((backend) => backend.Refine(id, prompt, effort)),
+  config: () => invoke("Config"),
+  saveKey: (key, allowPlaintext) => invoke("SaveKey", key, allowPlaintext),
+  deleteKey: () => invoke("DeleteKey"),
+  playlists: () => invoke("ListPlaylists"),
+  playlist: (id) => invoke("GetPlaylist", id),
+  generate: (body) => invoke("Generate", body),
+  refine: (id, prompt, effort) => invoke("Refine", id, prompt, effort),
   removeTrack: (playlistId, trackId) =>
-    desktopCall((backend) => backend.RemoveTrack(playlistId, trackId)),
+    invoke("RemoveTrack", playlistId, trackId),
   replaceTrack: (playlistId, trackId, prompt, effort) =>
-    desktopCall((backend) =>
-      backend.ReplaceTrack(playlistId, trackId, prompt, effort),
-    ),
-  soundiiz: (id) => desktopCall((backend) => backend.CreateSoundiizHandoff(id)),
-  job: (id) => desktopCall((backend) => backend.GetJob(id)),
-  cancelJob: (id) => desktopCall((backend) => backend.CancelJob(id)),
-  openExternalURL: (url) =>
-    desktopCall((backend) => backend.OpenExternalURL(url)),
+    invoke("ReplaceTrack", playlistId, trackId, prompt, effort),
+  soundiiz: (id) => invoke("CreateSoundiizHandoff", id),
+  job: (id) => invoke("GetJob", id),
+  cancelJob: (id) => invoke("CancelJob", id),
+  openExternalURL: (url) => invoke("OpenExternalURL", url),
 };
 
 export async function waitForJob(
