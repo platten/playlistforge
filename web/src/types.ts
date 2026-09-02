@@ -63,6 +63,7 @@ export interface Job {
   phase: string;
   playlistId?: string;
   error?: string;
+  errorCode?: string;
   startedAt?: string;
   finishedAt?: string;
 }

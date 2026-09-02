@@ -822,11 +822,33 @@ select {
   font-weight: 700;
   font-size: 0.85rem;
 }
-.error-banner span {
+.error-banner-content {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: 0;
+}
+.error-banner-content > span {
   font-size: 0.88rem;
 }
-.error-banner button {
+.error-banner .error-banner-action {
+  flex: 0 0 auto;
+  padding: 0.25rem 0;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+.error-banner .error-banner-action:hover {
+  color: var(--text);
+}
+.error-banner .error-banner-dismiss {
   flex: 0 0 auto;
   border: 0;
   background: none;
@@ -835,7 +857,7 @@ select {
   font-size: 1.4rem;
   line-height: 1;
 }
-.error-banner button:hover {
+.error-banner .error-banner-dismiss:hover {
   color: var(--text);
 }
 
@@ -1501,6 +1523,11 @@ dd {
 }
 
 @media (max-width: 640px) {
+  .error-banner-content {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
   .topbar {
     height: auto;
     flex-wrap: wrap;

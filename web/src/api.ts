@@ -60,6 +60,16 @@ export const api: BackendAPI = {
   openExternalURL: (url) => invoke("OpenExternalURL", url),
 };
 
+export class JobError extends Error {
+  constructor(
+    message: string,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = "JobError";
+  }
+}
+
 export async function waitForJob(
   initial: Job,
   onUpdate: (job: Job) => void,
@@ -75,7 +85,7 @@ export async function waitForJob(
     onUpdate(job);
   }
   if (job.status === "failed")
-    throw new Error(job.error || "The operation failed");
+    throw new JobError(job.error || "The operation failed", job.errorCode);
   if (job.status === "cancelled")
     throw new Error("The operation was cancelled");
   return job;

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Call } from "@wailsio/runtime";
-import { api, waitForJob } from "./api";
+import { api, JobError, waitForJob } from "./api";
 
 vi.mock("@wailsio/runtime", () => ({
   Call: { ByName: vi.fn() },
@@ -109,5 +109,22 @@ describe("Wails API adapter", () => {
         () => undefined,
       ),
     ).rejects.toThrow("The operation failed");
+  });
+
+  it("preserves a failed job's structured error code", async () => {
+    const failure = waitForJob(
+      {
+        id: "j",
+        status: "failed",
+        phase: "Failed",
+        error: "Credits are exhausted.",
+        errorCode: "credit_balance_exhausted",
+      },
+      () => undefined,
+    );
+    await expect(failure).rejects.toMatchObject({
+      name: "JobError",
+      code: "credit_balance_exhausted",
+    } satisfies Partial<JobError>);
   });
 });
