@@ -51,11 +51,19 @@ func TestOpenExternalURL(t *testing.T) {
 	if err := api.OpenExternalURL(trusted); err != nil || opened != trusted {
 		t.Fatalf("trusted URL: %q, %v", opened, err)
 	}
+	billing := "https://platform.openai.com/settings/organization/billing/overview"
+	if err := api.OpenExternalURL(billing); err != nil || opened != billing {
+		t.Fatalf("billing URL: %q, %v", opened, err)
+	}
 	for _, raw := range []string{
 		"http://soundiiz.com/go/import-playlist/token",
 		"https://example.com/go/import-playlist/token",
 		"https://soundiiz.com/other/token",
 		"https://user@soundiiz.com/go/import-playlist/token",
+		"https://platform.openai.com/settings/organization/billing/overview?next=evil",
+		"https://platform.openai.com/settings/organization/billing/overview#other",
+		"https://platform.openai.com/settings/organization/billing",
+		"https://user@platform.openai.com/settings/organization/billing/overview",
 	} {
 		if err := api.OpenExternalURL(raw); err == nil {
 			t.Fatalf("untrusted URL accepted: %s", raw)

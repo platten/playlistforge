@@ -89,6 +89,33 @@ describe("App", () => {
     await screen.findByLabelText(/what should this playlist feel/i);
     expect(await axe(document.body)).toHaveNoViolations();
   });
+  it("offers billing recovery for an exhausted OpenAI balance", async () => {
+    bindings.Generate.mockResolvedValueOnce({
+      id: "job",
+      status: "failed",
+      phase: "Failed",
+      error: "Your OpenAI organization has no prepaid credits remaining.",
+      errorCode: "credit_balance_exhausted",
+    });
+    render(<App />);
+    const prompt = await screen.findByLabelText(
+      /what should this playlist feel/i,
+    );
+    fireEvent.change(prompt, { target: { value: "rainy jazz" } });
+    fireEvent.click(screen.getByRole("button", { name: /forge playlist/i }));
+
+    const billing = await screen.findByRole("button", {
+      name: /review openai billing/i,
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(/no prepaid credits/i);
+    expect(await axe(screen.getByRole("alert"))).toHaveNoViolations();
+    fireEvent.click(billing);
+    await waitFor(() =>
+      expect(bindings.OpenExternalURL).toHaveBeenCalledWith(
+        "https://platform.openai.com/settings/organization/billing/overview",
+      ),
+    );
+  });
   it("navigates to settings and saves a key", async () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Settings" }));

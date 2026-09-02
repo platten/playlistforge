@@ -113,12 +113,14 @@ func (a *API) GetJob(id string) (playlist.Job, error) {
 
 func (a *API) CancelJob(id string) error { return a.service.CancelJob(id) }
 
-// OpenExternalURL only permits the validated Soundiiz handoff origin produced
-// by this application. It prevents a compromised frontend from becoming an
-// unrestricted native URL launcher.
+// OpenExternalURL permits the validated Soundiiz handoff origin and the exact
+// OpenAI billing recovery page. It prevents a compromised frontend from
+// becoming an unrestricted native URL launcher.
 func (a *API) OpenExternalURL(raw string) error {
 	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Scheme != "https" || parsed.Host != "soundiiz.com" || parsed.User != nil || !strings.HasPrefix(parsed.Path, "/go/import-playlist/") {
+	trustedSoundiiz := parsed != nil && parsed.Host == "soundiiz.com" && strings.HasPrefix(parsed.Path, "/go/import-playlist/")
+	trustedOpenAI := parsed != nil && parsed.Host == "platform.openai.com" && parsed.Path == "/settings/organization/billing/overview" && parsed.RawQuery == "" && parsed.Fragment == ""
+	if err != nil || parsed.Scheme != "https" || parsed.User != nil || (!trustedSoundiiz && !trustedOpenAI) {
 		return errors.New("refusing to open an untrusted external URL")
 	}
 	if a.openURL == nil {

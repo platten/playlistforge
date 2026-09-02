@@ -5,7 +5,7 @@ import {
   useEffect,
   useState,
 } from "react";
-import { api, waitForJob } from "./api";
+import { api, JobError, waitForJob } from "./api";
 import { ApiKeyHelpDialog } from "./ApiKeyHelpDialog";
 import { BusyOverlay } from "./BusyOverlay";
 import type { Config, Effort, Job, Playlist, Track } from "./types";
@@ -14,6 +14,16 @@ type Route =
   { page: "home" | "history" | "settings" } | { page: "playlist"; id: string };
 
 type Theme = "light" | "dark";
+type ErrorNotice = { message: string; code?: string };
+
+const OPENAI_BILLING_URL =
+  "https://platform.openai.com/settings/organization/billing/overview";
+const OPENAI_BILLING_CODES = new Set([
+  "credit_balance_exhausted",
+  "project_spend_limit_exceeded",
+  "organization_spend_limit_exceeded",
+  "organization_usage_limit_exceeded",
+]);
 
 // The hero ticker is decorative; the words only need to evoke the range of
 // taste the curator can work with.
@@ -118,7 +128,7 @@ export default function App() {
   const [config, setConfig] = useState<Config | null>(null);
   const [history, setHistory] = useState<Playlist[]>([]);
   const [job, setJob] = useState<Job | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<ErrorNotice | null>(null);
   const [theme, setTheme] = useState<Theme>(readTheme);
 
   useEffect(() => {
@@ -142,7 +152,7 @@ export default function App() {
   useEffect(() => {
     // Initial data arrives asynchronously; the callback performs the state sync.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    refresh().catch((reason: Error) => setError(reason.message));
+    refresh().catch((reason: Error) => setError({ message: reason.message }));
     const listener = () => setRoute(parseRoute());
     window.addEventListener("popstate", listener);
     return () => window.removeEventListener("popstate", listener);
@@ -154,13 +164,17 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  const reportError = useCallback((message: string) => {
+    setError({ message });
+  }, []);
+
   async function run(
     operation: () => Promise<Job>,
     after?: (done: Job) => Promise<void> | void,
   ) {
     // All paid operations share this lifecycle so refresh, cancellation, error
     // display, and the delayed busy overlay cannot drift between pages.
-    setError("");
+    setError(null);
     try {
       const initial = await operation();
       const done = await waitForJob(initial, setJob);
@@ -169,9 +183,11 @@ export default function App() {
       await after?.(done);
     } catch (reason) {
       setJob(null);
-      setError(
-        reason instanceof Error ? reason.message : "Something went wrong",
-      );
+      setError({
+        message:
+          reason instanceof Error ? reason.message : "Something went wrong",
+        code: reason instanceof JobError ? reason.code : undefined,
+      });
     }
   }
 
@@ -225,8 +241,26 @@ export default function App() {
       </header>
       {error && (
         <div className="error-banner" role="alert">
-          <span>{error}</span>
-          <button onClick={() => setError("")} aria-label="Dismiss error">
+          <div className="error-banner-content">
+            <span>{error.message}</span>
+            {error.code && OPENAI_BILLING_CODES.has(error.code) && (
+              <button
+                className="error-banner-action"
+                onClick={() =>
+                  api
+                    .openExternalURL(OPENAI_BILLING_URL)
+                    .catch((reason: Error) => reportError(reason.message))
+                }
+              >
+                Review OpenAI billing <span aria-hidden="true">↗</span>
+              </button>
+            )}
+          </div>
+          <button
+            className="error-banner-dismiss"
+            onClick={() => setError(null)}
+            aria-label="Dismiss error"
+          >
             ×
           </button>
         </div>
@@ -244,14 +278,18 @@ export default function App() {
           <HistoryPage history={history} navigate={navigate} />
         )}
         {route.page === "settings" && (
-          <SettingsPage config={config} refresh={refresh} setError={setError} />
+          <SettingsPage
+            config={config}
+            refresh={refresh}
+            setError={reportError}
+          />
         )}
         {route.page === "playlist" && (
           <PlaylistPage
             id={route.id}
             run={run}
             navigate={navigate}
-            setError={setError}
+            setError={reportError}
           />
         )}
       </main>

@@ -32,6 +32,38 @@ type responseAPI interface {
 	Create(context.Context, string, responses.ResponseNewParams) (*responses.Response, error)
 }
 
+// BillingError preserves the provider failure for diagnostics while exposing
+// a stable, safe recovery message to the application layer.
+type BillingError struct {
+	Code    string
+	Message string
+	Cause   error
+}
+
+func (e *BillingError) Error() string         { return e.Cause.Error() }
+func (e *BillingError) Unwrap() error         { return e.Cause }
+func (e *BillingError) PublicCode() string    { return e.Code }
+func (e *BillingError) PublicMessage() string { return e.Message }
+
+var billingMessages = map[string]string{
+	"credit_balance_exhausted":          "Your OpenAI organization has no prepaid credits remaining.",
+	"project_spend_limit_exceeded":      "This OpenAI project has reached its spending limit.",
+	"organization_spend_limit_exceeded": "Your OpenAI organization has reached its spending limit.",
+	"organization_usage_limit_exceeded": "Your OpenAI organization has reached its API usage limit.",
+}
+
+func classifyAPIError(err error) error {
+	var apiErr *openai.Error
+	if !errors.As(err, &apiErr) {
+		return err
+	}
+	message, ok := billingMessages[apiErr.Code]
+	if !ok {
+		return err
+	}
+	return &BillingError{Code: apiErr.Code, Message: message, Cause: err}
+}
+
 type sdkAPI struct{ httpClient *http.Client }
 
 func (s sdkAPI) Create(ctx context.Context, key string, params responses.ResponseNewParams) (*responses.Response, error) {
@@ -163,7 +195,7 @@ func (c *Client) call(ctx context.Context, input string, effort playlist.Effort,
 	}
 	response, err := c.api.Create(ctx, key, params)
 	if err != nil {
-		return nil, fmt.Errorf("OpenAI response: %w", err)
+		return nil, fmt.Errorf("OpenAI response: %w", classifyAPIError(err))
 	}
 	if strings.TrimSpace(response.OutputText()) == "" {
 		return response, errors.New("OpenAI returned no playlist")

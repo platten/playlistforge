@@ -128,6 +128,7 @@ type Job struct {
 	Phase      string     `json:"phase"`
 	PlaylistID string     `json:"playlistId,omitempty"`
 	Error      string     `json:"error,omitempty"`
+	ErrorCode  string     `json:"errorCode,omitempty"`
 	StartedAt  *time.Time `json:"startedAt,omitempty"`
 	FinishedAt *time.Time `json:"finishedAt,omitempty"`
 }

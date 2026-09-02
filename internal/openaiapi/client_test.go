@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	openai "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
 	"go.uber.org/zap"
 
@@ -131,6 +132,34 @@ func TestGenerateErrors(t *testing.T) {
 	client = newTestClient(&fakeAPI{response: responseWithText(t, generatedJSON(19))})
 	if _, _, err := client.Generate(context.Background(), playlist.GenerateRequest{Prompt: "valid", TrackCount: 20, Effort: playlist.EffortMedium}, nil); err == nil || !strings.Contains(err.Error(), "expected 20") {
 		t.Fatalf("count error = %v", err)
+	}
+}
+
+func TestClassifyAPIError(t *testing.T) {
+	tests := map[string]string{
+		"credit_balance_exhausted":          "no prepaid credits",
+		"project_spend_limit_exceeded":      "project has reached",
+		"organization_spend_limit_exceeded": "organization has reached its spending",
+		"organization_usage_limit_exceeded": "API usage limit",
+	}
+	for code, want := range tests {
+		t.Run(code, func(t *testing.T) {
+			provider := &openai.Error{Code: code}
+			classified := classifyAPIError(provider)
+			var billing *BillingError
+			if !errors.As(classified, &billing) || billing.PublicCode() != code || !strings.Contains(billing.PublicMessage(), want) || !errors.Is(classified, provider) {
+				t.Fatalf("classified=%#v", classified)
+			}
+		})
+	}
+
+	rateLimit := &openai.Error{Code: "rate_limit_exceeded"}
+	if classified := classifyAPIError(rateLimit); classified != rateLimit {
+		t.Fatalf("ordinary rate limit was classified as billing: %#v", classified)
+	}
+	network := errors.New("network")
+	if classified := classifyAPIError(network); classified != network {
+		t.Fatalf("non-API error changed: %#v", classified)
 	}
 }
 

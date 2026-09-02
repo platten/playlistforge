@@ -61,6 +61,12 @@ type fakeImporter struct {
 	err    error
 }
 
+type classifiedError struct{}
+
+func (classifiedError) Error() string         { return "provider detail" }
+func (classifiedError) PublicCode() string    { return "credit_balance_exhausted" }
+func (classifiedError) PublicMessage() string { return "Credits are exhausted." }
+
 func (f fakeImporter) Import(context.Context, playlist.Revision) (soundiiz.Result, error) {
 	return f.result, f.err
 }
@@ -277,5 +283,9 @@ func TestCancelAndPublicError(t *testing.T) {
 	long := publicError(errors.New(strings.Repeat("x", 700)))
 	if len(long) != 500 {
 		t.Fatalf("length=%d", len(long))
+	}
+	message, code := publicFailure(fmt.Errorf("generate: %w", classifiedError{}))
+	if message != "Credits are exhausted." || code != "credit_balance_exhausted" {
+		t.Fatalf("message=%q code=%q", message, code)
 	}
 }
