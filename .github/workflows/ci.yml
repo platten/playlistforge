@@ -16,13 +16,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/setup@v1
         with:
-          version: 11.19.0
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
+          version: 24
+          runtime: node@24
+          cache: true
           cache-dependency-path: web/pnpm-lock.yaml
       - uses: actions/setup-go@v7
         with:
@@ -37,13 +35,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/setup@v1
         with:
-          version: 11.19.0
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
+          version: 24
+          runtime: node@24
+          cache: true
           cache-dependency-path: web/pnpm-lock.yaml
       - uses: actions/setup-go@v7
         with:
@@ -62,13 +58,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/setup@v1
         with:
-          version: 11.19.0
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
+          version: 24
+          runtime: node@24
+          cache: true
           cache-dependency-path: web/pnpm-lock.yaml
       - uses: actions/setup-go@v7
         with:
@@ -89,13 +83,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/setup@v1
         with:
-          version: 11.19.0
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
+          version: 24
+          runtime: node@24
+          cache: true
           cache-dependency-path: web/pnpm-lock.yaml
       - uses: actions/setup-go@v7
         with:
@@ -117,13 +109,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/setup@v1
         with:
-          version: 11.19.0
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
+          version: 24
+          runtime: node@24
+          cache: true
           cache-dependency-path: web/pnpm-lock.yaml
       - uses: actions/setup-go@v7
         with:
