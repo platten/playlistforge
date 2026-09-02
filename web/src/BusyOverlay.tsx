@@ -37,7 +37,13 @@ export function BusyOverlay({
       onKeyDown={keepFocus}
     >
       <div className="busy-card">
-        <div className="spinner" aria-hidden="true" />
+        <div className="eq" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+          <span />
+          <span />
+        </div>
         <p className="eyebrow">Working on your playlist</p>
         <h2 id="busy-title">{job.phase}</h2>
         <p>

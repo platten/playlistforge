@@ -1,4 +1,10 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import {
+  CSSProperties,
+  FormEvent,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 import { api, waitForJob } from "./api";
 import { ApiKeyHelpDialog } from "./ApiKeyHelpDialog";
 import { BusyOverlay } from "./BusyOverlay";
@@ -6,6 +12,96 @@ import type { Config, Effort, Job, Playlist, Track } from "./types";
 
 type Route =
   { page: "home" | "history" | "settings" } | { page: "playlist"; id: string };
+
+type Theme = "light" | "dark";
+
+// The hero ticker is decorative; the words only need to evoke the range of
+// taste the curator can work with.
+const GENRES = [
+  "Spiritual jazz",
+  "Dub techno",
+  "Ambient",
+  "Post-punk",
+  "Neo-soul",
+  "Krautrock",
+  "Bossa nova",
+  "Shoegaze",
+  "Boom bap",
+  "Highlife",
+  "Balearic",
+  "Fourth world",
+  "Slowcore",
+  "Cosmic disco",
+  "Field recordings",
+];
+
+function readTheme(): Theme {
+  try {
+    const stored = localStorage.getItem("pf-theme");
+    if (stored === "light" || stored === "dark") return stored;
+    if (window.matchMedia?.("(prefers-color-scheme: light)").matches)
+      return "light";
+  } catch {
+    // Private-mode storage or a missing matchMedia both fall back to dark,
+    // which is the design's primary look.
+  }
+  return "dark";
+}
+
+// A struck record: the disc in accent, its centre punched to the page colour,
+// with a forge spark in the running text colour.
+function BrandMark() {
+  return (
+    <span className="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32" role="img" aria-label="Playlist Forge">
+        <circle cx="15" cy="17" r="12" fill="currentColor" />
+        <circle cx="15" cy="17" r="3.1" fill="var(--bg)" />
+        <path
+          d="M25 2.5 26.5 7 31 8.5 26.5 10 25 14.5 23.5 10 19 8.5 23.5 7Z"
+          fill="var(--text)"
+        />
+      </svg>
+    </span>
+  );
+}
+
+function SunIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="4" />
+      <path
+        strokeLinecap="round"
+        d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
+      />
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"
+      />
+    </svg>
+  );
+}
+
+// A deterministic sleeve colour so a track keeps the same artwork across
+// renders without storing anything.
+function coverStyle(seed: string): CSSProperties {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  const hue = hash % 360;
+  const partner = (hue + 35 + (hash % 90)) % 360;
+  return {
+    backgroundImage: `linear-gradient(140deg, hsl(${hue} 58% 46%), hsl(${partner} 62% 28%))`,
+  };
+}
 
 function parseRoute(): Route {
   // A tiny History API router is sufficient for the four embedded views and
@@ -23,6 +119,16 @@ export default function App() {
   const [history, setHistory] = useState<Playlist[]>([]);
   const [job, setJob] = useState<Job | null>(null);
   const [error, setError] = useState("");
+  const [theme, setTheme] = useState<Theme>(readTheme);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem("pf-theme", theme);
+    } catch {
+      // Persisting the preference is best-effort.
+    }
+  }, [theme]);
 
   const refresh = useCallback(async () => {
     const [nextConfig, nextHistory] = await Promise.all([
@@ -84,31 +190,38 @@ export default function App() {
           onClick={() => navigate("/")}
           aria-label="Playlist Forge home"
         >
-          <span className="brand-mark" aria-hidden="true">
-            PF
-          </span>
+          <BrandMark />
           <span>Playlist Forge</span>
         </button>
-        <nav aria-label="Main navigation">
+        <div className="topbar-right">
+          <nav aria-label="Main navigation">
+            <button
+              onClick={() => navigate("/")}
+              aria-current={route.page === "home" ? "page" : undefined}
+            >
+              Create
+            </button>
+            <button
+              onClick={() => navigate("/history")}
+              aria-current={route.page === "history" ? "page" : undefined}
+            >
+              History
+            </button>
+            <button
+              onClick={() => navigate("/settings")}
+              aria-current={route.page === "settings" ? "page" : undefined}
+            >
+              Settings
+            </button>
+          </nav>
           <button
-            onClick={() => navigate("/")}
-            aria-current={route.page === "home" ? "page" : undefined}
+            className="theme-toggle"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
           >
-            Create
+            {theme === "dark" ? <SunIcon /> : <MoonIcon />}
           </button>
-          <button
-            onClick={() => navigate("/history")}
-            aria-current={route.page === "history" ? "page" : undefined}
-          >
-            History
-          </button>
-          <button
-            onClick={() => navigate("/settings")}
-            aria-current={route.page === "settings" ? "page" : undefined}
-          >
-            Settings
-          </button>
-        </nav>
+        </div>
       </header>
       {error && (
         <div className="error-banner" role="alert">
@@ -195,6 +308,13 @@ function CreatePage({
           your finished playlist to Soundiiz for TIDAL, Qobuz, Spotify, or Apple
           Music.
         </p>
+        <div className="genre-ticker" aria-hidden="true">
+          <div className="genre-ticker-track">
+            {[...GENRES, ...GENRES].map((genre, index) => (
+              <span key={`${genre}-${index}`}>{genre}</span>
+            ))}
+          </div>
+        </div>
       </div>
       <form className="composer card" onSubmit={submit}>
         {!config?.credential.configured && (
@@ -651,9 +771,13 @@ function TrackRow({
   const [prompt, setPrompt] = useState("");
   return (
     <article className="track-row">
-      <span className="track-number">
-        {String(track.position).padStart(2, "0")}
-      </span>
+      <div
+        className="track-art"
+        aria-hidden="true"
+        style={coverStyle(track.id || track.title)}
+      >
+        <span>{String(track.position).padStart(2, "0")}</span>
+      </div>
       <div className="track-main">
         <h3>
           {track.title}
