@@ -98,11 +98,13 @@ const (
 )
 
 // PlaylistSource is one place a playlist also lives, shown as a badge in the UI.
+// ExternalID is the service's own id; it drives lazy hydration and is the handle
+// the Unlink control passes back to detach this link.
 type PlaylistSource struct {
 	Kind       string    `json:"kind"`
 	URL        string    `json:"url"`
 	SyncedAt   time.Time `json:"syncedAt"`
-	ExternalID string    `json:"-"` // the service's own id; needed for lazy hydration
+	ExternalID string    `json:"externalId"`
 }
 
 // SourceInput carries the streaming-service facts needed to create or refresh a

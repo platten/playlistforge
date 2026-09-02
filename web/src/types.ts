@@ -49,14 +49,44 @@ export interface Revision {
   createdAt: string;
 }
 
+/** A place a playlist also lives on a streaming service. */
+export interface PlaylistSourceLink {
+  kind: string;
+  url: string;
+  syncedAt: string;
+  /** The service's own id for this playlist; passed back to unlink it. */
+  externalId: string;
+}
+
 export interface Playlist {
   id: string;
   createdAt: string;
   updatedAt: string;
   currentRevision: Revision;
   revisionCount: number;
+  /** "generated" (from a brief) or "imported" (mirrors a streaming service). */
+  origin: "generated" | "imported";
+  /** Every service this playlist is linked to; empty for a purely generated one. */
+  sources?: PlaylistSourceLink[];
   soundiizUrl?: string;
   soundiizExpiresAt?: string;
+}
+
+/** Status of one streaming service the desktop build can import from. */
+export interface ConnectionStatus {
+  kind: string;
+  available: boolean;
+  connected: boolean;
+  displayName: string;
+}
+
+/** Summary returned by a per-service Reload. */
+export interface SyncResult {
+  added: number;
+  updated: number;
+  deleted: number;
+  merged: number;
+  syncedAt: string;
 }
 
 export interface Job {

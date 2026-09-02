@@ -5,7 +5,14 @@
  * `waitForJob` polls it to a terminal state.
  */
 import { Call } from "@wailsio/runtime";
-import type { Config, Effort, Job, Playlist } from "./types";
+import type {
+  Config,
+  ConnectionStatus,
+  Effort,
+  Job,
+  Playlist,
+  SyncResult,
+} from "./types";
 
 /** The desktop backend surface, mirroring the exported methods on Go's `desktop.API`. */
 export interface BackendAPI {
@@ -32,6 +39,17 @@ export interface BackendAPI {
   job(id: string): Promise<Job>;
   cancelJob(id: string): Promise<void>;
   openExternalURL(url: string): Promise<void>;
+
+  // Streaming import.
+  connections(): Promise<ConnectionStatus[]>;
+  connectService(kind: string): Promise<ConnectionStatus>;
+  disconnectService(kind: string): Promise<void>;
+  syncSource(kind: string): Promise<SyncResult>;
+  unlinkSource(
+    playlistId: string,
+    kind: string,
+    externalId: string,
+  ): Promise<Playlist>;
 }
 
 // Wails v3 keys every bound method by "<package path>.<type>.<method>". This is
@@ -66,6 +84,12 @@ export const api: BackendAPI = {
   job: (id) => invoke("GetJob", id),
   cancelJob: (id) => invoke("CancelJob", id),
   openExternalURL: (url) => invoke("OpenExternalURL", url),
+  connections: () => invoke("Connections"),
+  connectService: (kind) => invoke("ConnectService", kind),
+  disconnectService: (kind) => invoke("DisconnectService", kind),
+  syncSource: (kind) => invoke("SyncSource", kind),
+  unlinkSource: (playlistId, kind, externalId) =>
+    invoke("UnlinkSource", playlistId, kind, externalId),
 };
 
 /**

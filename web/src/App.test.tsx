@@ -40,7 +40,7 @@ function installBindings() {
     Config: vi.fn(() => Promise.resolve(config)),
     SaveKey: vi.fn(() => Promise.resolve(config.credential)),
     DeleteKey: vi.fn(() => Promise.resolve()),
-    ListPlaylists: vi.fn(() => Promise.resolve([])),
+    ListPlaylists: vi.fn((): Promise<unknown[]> => Promise.resolve([])),
     GetPlaylist: vi.fn(() => Promise.resolve({})),
     Generate: vi.fn(() => Promise.resolve({})),
     Refine: vi.fn(() => Promise.resolve({})),
@@ -50,6 +50,31 @@ function installBindings() {
     GetJob: vi.fn(() => Promise.resolve({})),
     CancelJob: vi.fn(() => Promise.resolve()),
     OpenExternalURL: vi.fn(() => Promise.resolve()),
+    Connections: vi.fn(() =>
+      Promise.resolve([
+        { kind: "tidal", available: false, connected: false, displayName: "" },
+        { kind: "qobuz", available: false, connected: false, displayName: "" },
+      ]),
+    ),
+    ConnectService: vi.fn(() =>
+      Promise.resolve({
+        kind: "tidal",
+        available: true,
+        connected: true,
+        displayName: "Listener",
+      }),
+    ),
+    DisconnectService: vi.fn(() => Promise.resolve()),
+    SyncSource: vi.fn(() =>
+      Promise.resolve({
+        added: 0,
+        updated: 0,
+        deleted: 0,
+        merged: 0,
+        syncedAt: "2026-09-01T00:00:00Z",
+      }),
+    ),
+    UnlinkSource: vi.fn(() => Promise.resolve({})),
   };
   vi.mocked(Call.ByName).mockImplementation(((
     name: string,
@@ -189,6 +214,123 @@ describe("App", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(helpButton).toHaveFocus();
   });
+  const revision = (title: string) => ({
+    id: `r-${title}`,
+    playlistId: `p-${title}`,
+    number: 1,
+    title,
+    description: `${title} description`,
+    prompt: "",
+    trackTarget: 2,
+    model: "gpt-5.6-sol",
+    effort: "medium" as const,
+    createdAt: "2026-09-01T00:00:00Z",
+    tracks: [
+      {
+        id: "t1",
+        position: 1,
+        title: "One",
+        artists: ["A"],
+        album: "",
+        rationale: "",
+      },
+      {
+        id: "t2",
+        position: 2,
+        title: "Two",
+        artists: ["B"],
+        album: "",
+        rationale: "",
+      },
+    ],
+    usage: {
+      responseId: "x",
+      model: "gpt-5.6-sol",
+      effort: "medium" as const,
+      inputTokens: 0,
+      cachedTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 0,
+      webSearchCalls: 0,
+      estimatedCostUsd: 0,
+      searchFeeKnown: true,
+      pricingVersion: "test",
+      elapsedMillis: 0,
+      createdAt: "2026-09-01T00:00:00Z",
+    },
+  });
+
+  it("clusters Browse selections and seeds them into the composer", async () => {
+    bindings.ListPlaylists.mockResolvedValue([
+      {
+        id: "gen",
+        createdAt: "2026-09-01T00:00:00Z",
+        updatedAt: "2026-09-01T00:00:00Z",
+        revisionCount: 1,
+        origin: "generated",
+        currentRevision: revision("Forged mix"),
+      },
+      {
+        id: "imp",
+        createdAt: "2026-09-01T00:00:00Z",
+        updatedAt: "2026-09-01T00:00:00Z",
+        revisionCount: 1,
+        origin: "imported",
+        sources: [
+          {
+            kind: "tidal",
+            url: "https://tidal.com/playlist/imp",
+            syncedAt: "2026-09-01T00:00:00Z",
+            externalId: "imp",
+          },
+        ],
+        currentRevision: revision("TIDAL favourites"),
+      },
+    ]);
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Browse" }));
+    fireEvent.click(
+      await screen.findByRole("checkbox", { name: /TIDAL favourites/i }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /use as inspiration \(1\)/i }),
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /forge playlist/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("TIDAL favourites")).toBeInTheDocument();
+  });
+
+  it("connects and disconnects a streaming service from settings", async () => {
+    bindings.Connections.mockResolvedValueOnce([
+      { kind: "tidal", available: true, connected: false, displayName: "" },
+      { kind: "qobuz", available: false, connected: false, displayName: "" },
+    ]).mockResolvedValue([
+      {
+        kind: "tidal",
+        available: true,
+        connected: true,
+        displayName: "Listener",
+      },
+      { kind: "qobuz", available: false, connected: false, displayName: "" },
+    ]);
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Settings" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Connect" }));
+
+    await waitFor(() =>
+      expect(bindings.ConnectService).toHaveBeenCalledWith("tidal"),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Disconnect" }));
+    await waitFor(() =>
+      expect(bindings.DisconnectService).toHaveBeenCalledWith("tidal"),
+    );
+  });
+
   it("offers a direct Soundiiz handoff without destination controls", async () => {
     window.history.replaceState({}, "", "/playlists/p");
     const playlist = {
