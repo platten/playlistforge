@@ -128,6 +128,47 @@ func TestSyncImportsAndHydrates(t *testing.T) {
 	}
 }
 
+func TestSyncHydratesPlaylistWithRepeatedTrackIDs(t *testing.T) {
+	svc, _, tidal, _ := newImportService(t)
+	ctx := context.Background()
+
+	// A real streaming playlist can list the same recording twice; the stored
+	// (revision_id, id) key must not reject it.
+	dup := playlist.Track{ID: "same", Title: "Repeat", Artists: []string{"A"}, Rationale: "imported"}
+	blank := playlist.Track{Title: "No id", Artists: []string{"B"}, Rationale: "imported"}
+	tidal.Playlists = []musicsource.RemotePlaylist{remote("p1", "Doubles", "e1", 4)}
+	tidal.Tracks = map[string][]playlist.Track{"p1": {dup, dup, blank, blank}}
+
+	res, err := svc.SyncSource(ctx, musicsource.KindTIDAL)
+	if err != nil || res.Added != 1 {
+		t.Fatalf("sync: %+v %v", res, err)
+	}
+	items, _ := svc.List(ctx)
+	if len(items) != 1 {
+		t.Fatalf("list: %d", len(items))
+	}
+	got, err := svc.Get(ctx, items[0].ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.TracksStale || len(got.CurrentRevision.Tracks) != 4 {
+		t.Fatalf("hydrated: stale=%t tracks=%d", got.TracksStale, len(got.CurrentRevision.Tracks))
+	}
+	seen := map[string]struct{}{}
+	for i, tr := range got.CurrentRevision.Tracks {
+		if tr.ID == "" {
+			t.Fatalf("track %d has no id", i)
+		}
+		if _, dup := seen[tr.ID]; dup {
+			t.Fatalf("track %d reused id %q", i, tr.ID)
+		}
+		seen[tr.ID] = struct{}{}
+		if tr.Position != i+1 {
+			t.Fatalf("track %d position = %d", i, tr.Position)
+		}
+	}
+}
+
 func TestSyncMergesSameMusic(t *testing.T) {
 	svc, _, tidal, _ := newImportService(t)
 	ctx := context.Background()

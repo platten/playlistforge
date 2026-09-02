@@ -161,14 +161,18 @@ func insertRevision(ctx context.Context, tx *sql.Tx, revision playlist.Revision,
 	return nil
 }
 
-// insertTracks writes tracks into revisionID at sequential positions, assigning
-// a new id to any track that lacks one.
+// insertTracks writes tracks into revisionID at sequential positions. It assigns
+// a fresh id to any track that lacks one or repeats an id already used in this
+// revision — imported playlists legitimately contain the same recording more
+// than once, and (revision_id, id) is the tracks primary key.
 func insertTracks(ctx context.Context, tx *sql.Tx, revisionID string, tracks []playlist.Track) error {
+	seen := make(map[string]struct{}, len(tracks))
 	for i := range tracks {
 		track := tracks[i]
-		if track.ID == "" {
+		if _, dup := seen[track.ID]; track.ID == "" || dup {
 			track.ID = uuid.NewString()
 		}
+		seen[track.ID] = struct{}{}
 		track.Position = i + 1
 		artists, err := json.Marshal(track.Artists)
 		if err != nil {
