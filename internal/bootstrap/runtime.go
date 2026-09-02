@@ -17,6 +17,8 @@ import (
 	"playlistforge/internal/credentials"
 	"playlistforge/internal/logging"
 	"playlistforge/internal/musicsource"
+	"playlistforge/internal/musicsource/qobuz"
+	"playlistforge/internal/musicsource/tidal"
 	"playlistforge/internal/openaiapi"
 	"playlistforge/internal/soundiiz"
 	"playlistforge/internal/storage"
@@ -66,9 +68,12 @@ func New(options Options) (*Runtime, error) {
 		return nil, err
 	}
 	keys := credentials.New(configDir)
-	// The streaming-source registry is empty until the TIDAL and Qobuz adapters
-	// are wired; Connections() then reports each service as unavailable.
-	sources := musicsource.Registry{}
+	// Reverse-engineered adapters for the two services Playlist Forge can import
+	// from. Both use community client credentials and undocumented endpoints.
+	sources := musicsource.Registry{
+		musicsource.KindTIDAL: tidal.New(),
+		musicsource.KindQobuz: qobuz.New(),
+	}
 	service := app.New(ctx, repo, openaiapi.New(keys, logger), soundiiz.New(), connections.New(), sources, logger)
 	return &Runtime{
 		Service:   service,
