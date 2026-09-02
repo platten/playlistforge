@@ -80,6 +80,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+      - name: Install NSIS
+        run: choco install nsis --yes --no-progress
       - name: Build the Windows desktop application (amd64 + arm64)
         shell: pwsh
         run: ./scripts/build-desktop.ps1 -SkipTests

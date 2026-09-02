@@ -100,6 +100,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+      - name: Install NSIS
+        run: choco install nsis --yes --no-progress
       - name: Build and archive the Windows desktop application (amd64 + arm64)
         shell: pwsh
         run: |
@@ -113,7 +115,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: release-desktop-windows
-          path: playlist-forge-desktop-windows-*.zip
+          path: |
+            playlist-forge-desktop-windows-*.zip
+            build/bin/playlist-forge-*-windows-*-setup.exe
 
   desktop-macos:
     needs: quality
@@ -160,6 +164,13 @@ jobs:
           pattern: release-desktop-*
           path: release
           merge-multiple: true
+      - name: Upload the Windows installers to VirusTotal
+        env:
+          VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+        shell: bash
+        run: |
+          bash scripts/upload-virustotal.sh "release/playlist-forge-${GITHUB_REF_NAME#v}-windows-amd64-setup.exe"
+          bash scripts/upload-virustotal.sh "release/playlist-forge-${GITHUB_REF_NAME#v}-windows-arm64-setup.exe"
       - name: Write release checksums
         shell: bash
         run: |
