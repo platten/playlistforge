@@ -56,7 +56,14 @@ async function invoke<T>(method: string, ...args: unknown[]): Promise<T> {
   try {
     return (await Call.ByName(`${SERVICE}.${method}`, ...args)) as T;
   } catch (reason) {
-    throw reason instanceof Error ? reason : new Error(String(reason));
+    if (reason instanceof Error && reason.message.trim() !== "") throw reason;
+    const text = String(reason ?? "").trim();
+    throw new Error(
+      text && text !== "undefined" && text !== "null"
+        ? text
+        : `The ${method} request failed`,
+      { cause: reason },
+    );
   }
 }
 

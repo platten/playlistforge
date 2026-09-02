@@ -22,6 +22,10 @@ var desktopAssets embed.FS
 var version = "dev"
 
 func run() (runErr error) {
+	if logFile := setupDiagnosticLog("playlist-forge"); logFile != nil {
+		defer func() { _ = logFile.Close() }()
+	}
+
 	runtime, err := bootstrap.New(bootstrap.Options{
 		Context:        context.Background(),
 		ApplicationDir: "playlist-forge",

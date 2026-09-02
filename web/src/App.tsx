@@ -109,6 +109,12 @@ function SourceBadges({ item }: { item: Playlist }) {
 const trackList = (item: Playlist): Track[] =>
   item.currentRevision?.tracks ?? [];
 
+// An Error with an empty message must never reach the banner as a blank alert.
+const errorText = (reason: unknown, fallback: string): string =>
+  reason instanceof Error && reason.message.trim() !== ""
+    ? reason.message
+    : fallback;
+
 /**
  * Stops a render error in one view from blanking the whole app. React needs a
  * class component for this; it is the only one in the file.
@@ -315,7 +321,9 @@ export default function App() {
   useEffect(() => {
     // Initial data arrives asynchronously; the callback performs the state sync.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    refresh().catch((reason: Error) => setError({ message: reason.message }));
+    refresh().catch((reason: unknown) =>
+      setError({ message: errorText(reason, "Could not load the app") }),
+    );
     const listener = () => setRoute(parseRoute());
     window.addEventListener("popstate", listener);
     return () => window.removeEventListener("popstate", listener);
@@ -368,9 +376,12 @@ export default function App() {
       await after?.(done);
     } catch (reason) {
       setJob(null);
+      const message =
+        reason instanceof Error && reason.message.trim() !== ""
+          ? reason.message
+          : "Something went wrong";
       setError({
-        message:
-          reason instanceof Error ? reason.message : "Something went wrong",
+        message,
         code: reason instanceof JobError ? reason.code : undefined,
       });
     }
@@ -430,7 +441,7 @@ export default function App() {
           </button>
         </div>
       </header>
-      {error && (
+      {error && error.message.trim() !== "" && (
         <div className="error-banner" role="alert">
           <div className="error-banner-content">
             <span>{error.message}</span>
@@ -440,7 +451,11 @@ export default function App() {
                 onClick={() =>
                   api
                     .openExternalURL(OPENAI_BILLING_URL)
-                    .catch((reason: Error) => reportError(reason.message))
+                    .catch((reason: unknown) =>
+                      reportError(
+                        errorText(reason, "Could not open the billing page"),
+                      ),
+                    )
                 }
               >
                 Review OpenAI billing <span aria-hidden="true">↗</span>
@@ -937,7 +952,7 @@ function SettingsPage({
       );
       await refresh();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not save key");
+      setError(errorText(reason, "Could not save key"));
     } finally {
       setSaving(false);
     }
@@ -949,9 +964,7 @@ function SettingsPage({
       setSaved("Key removed.");
       await refresh();
     } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : "Could not remove key",
-      );
+      setError(errorText(reason, "Could not remove key"));
     }
   }
   return (
@@ -1112,11 +1125,7 @@ function ConnectionRow({
       await api.connectService(kind);
       await refresh();
     } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : `Could not connect ${serviceLabel(kind)}`,
-      );
+      setError(errorText(reason, `Could not connect ${serviceLabel(kind)}`));
     } finally {
       setBusy(false);
     }
@@ -1129,11 +1138,7 @@ function ConnectionRow({
       await api.disconnectService(kind);
       await refresh();
     } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : `Could not disconnect ${serviceLabel(kind)}`,
-      );
+      setError(errorText(reason, `Could not disconnect ${serviceLabel(kind)}`));
     } finally {
       setBusy(false);
     }
@@ -1200,7 +1205,9 @@ function PlaylistPage({
   const [effort, setEffort] = useState<Effort>("medium");
   const load = useCallback(() => api.playlist(id).then(setItem), [id]);
   useEffect(() => {
-    load().catch((reason: Error) => setError(reason.message));
+    load().catch((reason: unknown) =>
+      setError(errorText(reason, "Could not load the playlist")),
+    );
   }, [load, setError]);
   if (!item)
     return (
