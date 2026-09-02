@@ -86,7 +86,7 @@ func testService(t *testing.T, generator *fakeGenerator, importer fakeImporter) 
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	service := New(ctx, repo, generator, importer, zap.NewNop())
+	service := New(ctx, repo, generator, importer, nil, nil, zap.NewNop())
 	t.Cleanup(func() { service.Close(); cancel(); _ = repo.Close() })
 	return service, repo
 }

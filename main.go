@@ -22,6 +22,10 @@ var desktopAssets embed.FS
 var version = "dev"
 
 func run() (runErr error) {
+	if logFile := setupDiagnosticLog("playlist-forge"); logFile != nil {
+		defer func() { _ = logFile.Close() }()
+	}
+
 	runtime, err := bootstrap.New(bootstrap.Options{
 		Context:        context.Background(),
 		ApplicationDir: "playlist-forge",
@@ -48,11 +52,8 @@ func run() (runErr error) {
 		runtime.Service,
 		runtime.Keys,
 		runtime.Validator,
-		func(raw string) {
-			if app := application.Get(); app != nil {
-				_ = app.Browser.OpenURL(raw)
-			}
-		},
+		func(raw string) { _ = openInBrowser(raw) },
+		runAuth,
 	)
 
 	app := application.New(application.Options{
@@ -64,7 +65,9 @@ func run() (runErr error) {
 		Assets: application.AssetOptions{
 			Handler: application.BundledAssetFileServer(assets),
 		},
-		LogLevel: slog.LevelWarn,
+		// Captures posted by the streaming sign-in window (see authwindow.go).
+		RawMessageHandler: handleRawMessage,
+		LogLevel:          slog.LevelWarn,
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},

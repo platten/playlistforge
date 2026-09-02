@@ -9,6 +9,7 @@ import (
 
 	"playlistforge/internal/app"
 	"playlistforge/internal/credentials"
+	"playlistforge/internal/musicsource"
 	"playlistforge/internal/playlist"
 )
 
@@ -56,12 +57,16 @@ type API struct {
 	// than called directly) so the package stays free of a Wails import and
 	// OpenExternalURL remains unit-testable.
 	openURL func(string)
+	// runAuth opens the streaming sign-in window described by req and returns
+	// the value it captured (a redirect URL or an extracted token). Injected
+	// for the same reasons as openURL.
+	runAuth func(req musicsource.AuthRequest) (string, error)
 }
 
 // New builds the desktop API. The caller registers the result as a Wails
-// service and supplies openURL, typically wired to the host browser manager.
-func New(ctx context.Context, service *app.Service, keys credentialStore, validator keyValidator, openURL func(string)) *API {
-	return &API{ctx: ctx, service: service, keys: keys, validator: validator, openURL: openURL}
+// service and supplies openURL and runAuth, wired to the host webview.
+func New(ctx context.Context, service *app.Service, keys credentialStore, validator keyValidator, openURL func(string), runAuth func(musicsource.AuthRequest) (string, error)) *API {
+	return &API{ctx: ctx, service: service, keys: keys, validator: validator, openURL: openURL, runAuth: runAuth}
 }
 
 // Config returns the immutable presentation contract: credential status, the
@@ -161,4 +166,42 @@ func (a *API) OpenExternalURL(raw string) error {
 	}
 	a.openURL(raw)
 	return nil
+}
+
+// Connections reports the status of every streaming service the build offers.
+func (a *API) Connections() []app.ConnectionStatus { return a.service.Connections() }
+
+// ConnectService runs the sign-in window for kind and stores the resulting
+// session. The returned status reflects the connection after sign-in.
+func (a *API) ConnectService(kind string) (app.ConnectionStatus, error) {
+	if a.runAuth == nil {
+		return app.ConnectionStatus{}, errors.New("streaming sign-in is unavailable")
+	}
+	req, err := a.service.AuthRequest(musicsource.Kind(kind))
+	if err != nil {
+		return app.ConnectionStatus{}, err
+	}
+	captured, err := a.runAuth(req)
+	if err != nil {
+		return app.ConnectionStatus{}, err
+	}
+	return a.service.CompleteAuth(a.ctx, musicsource.Kind(kind), captured)
+}
+
+// DisconnectService removes the stored session for kind. Imported playlists are
+// kept and can still be used as inspiration.
+func (a *API) DisconnectService(kind string) error {
+	return a.service.Disconnect(musicsource.Kind(kind))
+}
+
+// SyncSource starts a background job that refreshes the local mirror of one
+// streaming service, reporting progress. No OpenAI cost.
+func (a *API) SyncSource(kind string) (playlist.Job, error) {
+	return a.service.SyncSourceJob(musicsource.Kind(kind))
+}
+
+// UnlinkSource detaches one streaming service from a merged playlist and
+// prevents that pair from being auto-merged again.
+func (a *API) UnlinkSource(playlistID, kind, externalID string) (playlist.Playlist, error) {
+	return a.service.UnlinkSource(a.ctx, playlistID, musicsource.Kind(kind), externalID)
 }

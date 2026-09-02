@@ -9,7 +9,9 @@ CREATE TABLE IF NOT EXISTS playlists (
     current_revision_id TEXT NOT NULL,
     revision_count INTEGER NOT NULL DEFAULT 1,
     soundiiz_url TEXT,
-    soundiiz_expires_at TEXT
+    soundiiz_expires_at TEXT,
+    -- 'generated' (born from a brief) or 'imported' (mirrors a streaming service).
+    origin TEXT NOT NULL DEFAULT 'generated'
 );
 
 -- User and model edits append rows; existing revisions are never updated.
@@ -40,6 +42,7 @@ CREATE TABLE IF NOT EXISTS tracks (
     version TEXT,
     remaster_year INTEGER,
     quality_note TEXT,
+    isrc TEXT,
     rationale TEXT NOT NULL,
     PRIMARY KEY (revision_id, id),
     UNIQUE(revision_id, position)
@@ -50,6 +53,31 @@ CREATE TABLE IF NOT EXISTS revision_references (
     revision_id TEXT NOT NULL REFERENCES revisions(id) ON DELETE CASCADE,
     reference_playlist_id TEXT NOT NULL,
     PRIMARY KEY (revision_id, reference_playlist_id)
+);
+
+-- Where a playlist also lives on a streaming service. A playlist may carry zero
+-- or more links; sync creates, refreshes, and removes them. tracks_fetched is 0
+-- until the linked playlist's tracklist has been hydrated.
+CREATE TABLE IF NOT EXISTS playlist_sources (
+    playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    external_url TEXT,
+    etag TEXT,
+    remote_updated_at TEXT,
+    synced_at TEXT NOT NULL,
+    tracks_fetched INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (playlist_id, kind),
+    UNIQUE (kind, external_id)
+);
+
+-- A pair of playlist ids the same-music matcher must never re-merge, recorded
+-- when a listener manually unlinks a wrongly merged source.
+CREATE TABLE IF NOT EXISTS match_suppressed (
+    playlist_id TEXT NOT NULL,
+    external_kind TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    PRIMARY KEY (playlist_id, external_kind, external_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_revisions_playlist ON revisions(playlist_id, revision_number);

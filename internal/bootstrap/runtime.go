@@ -13,8 +13,12 @@ import (
 	"go.uber.org/zap"
 
 	"playlistforge/internal/app"
+	"playlistforge/internal/connections"
 	"playlistforge/internal/credentials"
 	"playlistforge/internal/logging"
+	"playlistforge/internal/musicsource"
+	"playlistforge/internal/musicsource/qobuz"
+	"playlistforge/internal/musicsource/tidal"
 	"playlistforge/internal/openaiapi"
 	"playlistforge/internal/soundiiz"
 	"playlistforge/internal/storage"
@@ -64,7 +68,13 @@ func New(options Options) (*Runtime, error) {
 		return nil, err
 	}
 	keys := credentials.New(configDir)
-	service := app.New(ctx, repo, openaiapi.New(keys, logger), soundiiz.New(), logger)
+	// Reverse-engineered adapters for the two services Playlist Forge can import
+	// from. Both use community client credentials and undocumented endpoints.
+	sources := musicsource.Registry{
+		musicsource.KindTIDAL: tidal.New(),
+		musicsource.KindQobuz: qobuz.New(),
+	}
+	service := app.New(ctx, repo, openaiapi.New(keys, logger), soundiiz.New(), connections.New(configDir), sources, logger)
 	return &Runtime{
 		Service:   service,
 		Keys:      keys,

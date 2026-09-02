@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,6 +19,14 @@ import (
 
 //go:embed schema.sql
 var schema string
+
+// migrations bring a database created by an older schema up to date. Each is
+// additive and its "duplicate column name" error on an already-current database
+// is expected and ignored. SQLite has no ADD COLUMN IF NOT EXISTS.
+var migrations = []string{
+	`ALTER TABLE tracks ADD COLUMN isrc TEXT`,
+	`ALTER TABLE playlists ADD COLUMN origin TEXT NOT NULL DEFAULT 'generated'`,
+}
 
 // ErrNotFound is returned when a playlist identifier does not exist.
 var ErrNotFound = errors.New("playlist not found")
@@ -44,7 +53,21 @@ func Open(path string) (*Repository, error) {
 		}
 		return nil, fmt.Errorf("apply database schema: %w", err)
 	}
+	for _, migration := range migrations {
+		if _, err := db.ExecContext(ctx, migration); err != nil && !isDuplicateColumn(err) {
+			if closeErr := db.Close(); closeErr != nil {
+				return nil, errors.Join(fmt.Errorf("apply migration: %w", err), fmt.Errorf("close sqlite: %w", closeErr))
+			}
+			return nil, fmt.Errorf("apply migration: %w", err)
+		}
+	}
 	return &Repository{db: db}, nil
+}
+
+// isDuplicateColumn reports whether err is SQLite's "duplicate column name"
+// from re-running an additive ALTER TABLE ADD COLUMN on a current database.
+func isDuplicateColumn(err error) bool {
+	return strings.Contains(err.Error(), "duplicate column name")
 }
 
 // Close releases the database connection.
@@ -127,26 +150,39 @@ func insertRevision(ctx context.Context, tx *sql.Tx, revision playlist.Revision,
 	if err != nil {
 		return fmt.Errorf("insert revision: %w", err)
 	}
-	for i := range revision.Tracks {
-		track := revision.Tracks[i]
-		if track.ID == "" {
+	if err := insertTracks(ctx, tx, revision.ID, revision.Tracks); err != nil {
+		return err
+	}
+	for _, reference := range references {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO revision_references(revision_id,reference_playlist_id) VALUES(?,?)`, revision.ID, reference); err != nil {
+			return fmt.Errorf("insert playlist reference: %w", err)
+		}
+	}
+	return nil
+}
+
+// insertTracks writes tracks into revisionID at sequential positions. It assigns
+// a fresh id to any track that lacks one or repeats an id already used in this
+// revision — imported playlists legitimately contain the same recording more
+// than once, and (revision_id, id) is the tracks primary key.
+func insertTracks(ctx context.Context, tx *sql.Tx, revisionID string, tracks []playlist.Track) error {
+	seen := make(map[string]struct{}, len(tracks))
+	for i := range tracks {
+		track := tracks[i]
+		if _, dup := seen[track.ID]; track.ID == "" || dup {
 			track.ID = uuid.NewString()
 		}
+		seen[track.ID] = struct{}{}
 		track.Position = i + 1
 		artists, err := json.Marshal(track.Artists)
 		if err != nil {
 			return fmt.Errorf("encode track artists: %w", err)
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO tracks(id,revision_id,position,title,artists_json,album,release_year,version,remaster_year,quality_note,rationale) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-			track.ID, revision.ID, track.Position, track.Title, string(artists), track.Album, track.ReleaseYear,
-			track.Version, track.RemasterYear, track.QualityNote, track.Rationale)
+		_, err = tx.ExecContext(ctx, `INSERT INTO tracks(id,revision_id,position,title,artists_json,album,release_year,version,remaster_year,quality_note,isrc,rationale) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+			track.ID, revisionID, track.Position, track.Title, string(artists), track.Album, track.ReleaseYear,
+			track.Version, track.RemasterYear, track.QualityNote, track.ISRC, track.Rationale)
 		if err != nil {
 			return fmt.Errorf("insert track %d: %w", i+1, err)
-		}
-	}
-	for _, reference := range references {
-		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO revision_references(revision_id,reference_playlist_id) VALUES(?,?)`, revision.ID, reference); err != nil {
-			return fmt.Errorf("insert playlist reference: %w", err)
 		}
 	}
 	return nil
@@ -189,8 +225,8 @@ func (r *Repository) Get(ctx context.Context, id string) (playlist.Playlist, err
 	var item playlist.Playlist
 	var created, updated, revisionID string
 	var soundURL, soundExpires sql.NullString
-	err := r.db.QueryRowContext(ctx, `SELECT id,created_at,updated_at,current_revision_id,revision_count,soundiiz_url,soundiiz_expires_at FROM playlists WHERE id=?`, id).
-		Scan(&item.ID, &created, &updated, &revisionID, &item.RevisionCount, &soundURL, &soundExpires)
+	err := r.db.QueryRowContext(ctx, `SELECT id,created_at,updated_at,current_revision_id,revision_count,soundiiz_url,soundiiz_expires_at,origin FROM playlists WHERE id=?`, id).
+		Scan(&item.ID, &created, &updated, &revisionID, &item.RevisionCount, &soundURL, &soundExpires, &item.Origin)
 	if errors.Is(err, sql.ErrNoRows) {
 		return playlist.Playlist{}, ErrNotFound
 	}
@@ -219,7 +255,47 @@ func (r *Repository) Get(ctx context.Context, id string) (playlist.Playlist, err
 		}
 		item.SoundiizExpires = &expires
 	}
+	if err := r.loadSources(ctx, &item); err != nil {
+		return playlist.Playlist{}, err
+	}
 	return item, nil
+}
+
+// loadSources attaches any streaming-service links to item and, for an imported
+// playlist, sets TracksStale from whether the tracklist has been hydrated.
+func (r *Repository) loadSources(ctx context.Context, item *playlist.Playlist) error {
+	rows, err := r.db.QueryContext(ctx, `SELECT kind,external_id,external_url,synced_at,tracks_fetched FROM playlist_sources WHERE playlist_id=? ORDER BY kind`, item.ID)
+	if err != nil {
+		return fmt.Errorf("load playlist sources: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	anyStale := false
+	linked := false
+	for rows.Next() {
+		var kind, externalID, syncedAt string
+		var url sql.NullString
+		var fetched int
+		if err := rows.Scan(&kind, &externalID, &url, &syncedAt, &fetched); err != nil {
+			return fmt.Errorf("scan playlist source: %w", err)
+		}
+		linked = true
+		synced, err := parseTime(syncedAt)
+		if err != nil {
+			return err
+		}
+		item.Sources = append(item.Sources, playlist.PlaylistSource{Kind: kind, URL: url.String, SyncedAt: synced, ExternalID: externalID})
+		if fetched == 0 {
+			anyStale = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate playlist sources: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close playlist sources: %w", err)
+	}
+	item.TracksStale = item.Origin == playlist.OriginImported && linked && anyStale
+	return nil
 }
 
 func (r *Repository) getRevision(ctx context.Context, id string) (playlist.Revision, error) {
@@ -239,7 +315,7 @@ func (r *Repository) getRevision(ctx context.Context, id string) (playlist.Revis
 	if err != nil {
 		return playlist.Revision{}, err
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id,position,title,artists_json,album,release_year,version,remaster_year,quality_note,rationale FROM tracks WHERE revision_id=? ORDER BY position`, id)
+	rows, err := r.db.QueryContext(ctx, `SELECT id,position,title,artists_json,album,release_year,version,remaster_year,quality_note,isrc,rationale FROM tracks WHERE revision_id=? ORDER BY position`, id)
 	if err != nil {
 		return playlist.Revision{}, fmt.Errorf("get tracks: %w", err)
 	}
@@ -248,8 +324,8 @@ func (r *Repository) getRevision(ctx context.Context, id string) (playlist.Revis
 		var track playlist.Track
 		var artistsJSON string
 		var release, remaster sql.NullInt64
-		var version, quality sql.NullString
-		if err := rows.Scan(&track.ID, &track.Position, &track.Title, &artistsJSON, &track.Album, &release, &version, &remaster, &quality, &track.Rationale); err != nil {
+		var version, quality, isrc sql.NullString
+		if err := rows.Scan(&track.ID, &track.Position, &track.Title, &artistsJSON, &track.Album, &release, &version, &remaster, &quality, &isrc, &track.Rationale); err != nil {
 			return playlist.Revision{}, fmt.Errorf("scan track: %w", err)
 		}
 		if err := json.Unmarshal([]byte(artistsJSON), &track.Artists); err != nil {
@@ -269,6 +345,9 @@ func (r *Repository) getRevision(ctx context.Context, id string) (playlist.Revis
 		if quality.Valid {
 			track.QualityNote = &quality.String
 		}
+		if isrc.Valid {
+			track.ISRC = &isrc.String
+		}
 		revision.Tracks = append(revision.Tracks, track)
 	}
 	if err := rows.Err(); err != nil {
@@ -276,6 +355,11 @@ func (r *Repository) getRevision(ctx context.Context, id string) (playlist.Revis
 	}
 	if err := rows.Close(); err != nil {
 		return playlist.Revision{}, fmt.Errorf("close tracks: %w", err)
+	}
+	if revision.Tracks == nil {
+		// A not-yet-hydrated import has no track rows; keep the JSON contract a
+		// list so the frontend never sees a null tracklist.
+		revision.Tracks = []playlist.Track{}
 	}
 	return revision, nil
 }

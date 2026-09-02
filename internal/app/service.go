@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"playlistforge/internal/musicsource"
 	"playlistforge/internal/playlist"
 	"playlistforge/internal/soundiiz"
 )
@@ -27,6 +28,14 @@ type importer interface {
 	Import(context.Context, playlist.Revision) (soundiiz.Result, error)
 }
 
+// sessionStore is the per-service keyring token store (internal/connections).
+type sessionStore interface {
+	Get(name string) ([]byte, error)
+	Set(name string, blob []byte) error
+	Delete(name string) error
+	Has(name string) bool
+}
+
 // Service coordinates asynchronous playlist operations and local persistence.
 // Jobs live only for the lifetime of the process; completed playlists and
 // revisions are persisted through the Repository interface.
@@ -34,6 +43,8 @@ type Service struct {
 	repo      playlist.Repository
 	generator playlist.Generator
 	importer  importer
+	sessions  sessionStore
+	sources   musicsource.Registry
 	logger    *zap.Logger
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -42,15 +53,25 @@ type Service struct {
 	cancels   map[string]context.CancelFunc
 	// gate serializes paid, long-running operations. A single local user gets
 	// predictable API spend and SQLite writes never compete with another job.
-	gate    chan struct{}
-	workers sync.WaitGroup
-	now     func() time.Time
+	gate chan struct{}
+	// syncGate serializes streaming syncs among themselves without blocking, or
+	// being blocked by, paid work.
+	syncGate chan struct{}
+	workers  sync.WaitGroup
+	now      func() time.Time
 }
 
 // New constructs a Service whose jobs are cancelled when parent is cancelled.
-func New(parent context.Context, repo playlist.Repository, generator playlist.Generator, importer importer, logger *zap.Logger) *Service {
+// sessions and sources may be nil where streaming import is not wired.
+func New(parent context.Context, repo playlist.Repository, generator playlist.Generator, importer importer, sessions sessionStore, sources musicsource.Registry, logger *zap.Logger) *Service {
 	ctx, cancel := context.WithCancel(parent)
-	return &Service{repo: repo, generator: generator, importer: importer, logger: logger, ctx: ctx, cancel: cancel, jobs: make(map[string]playlist.Job), cancels: make(map[string]context.CancelFunc), gate: make(chan struct{}, 1), now: time.Now}
+	return &Service{
+		repo: repo, generator: generator, importer: importer,
+		sessions: sessions, sources: sources, logger: logger,
+		ctx: ctx, cancel: cancel,
+		jobs: make(map[string]playlist.Job), cancels: make(map[string]context.CancelFunc),
+		gate: make(chan struct{}, 1), syncGate: make(chan struct{}, 1), now: time.Now,
+	}
 }
 
 // Close cancels queued and running jobs and waits for their goroutines to exit.
@@ -62,8 +83,35 @@ func (s *Service) Close() {
 // List returns saved playlists in repository-defined order.
 func (s *Service) List(ctx context.Context) ([]playlist.Playlist, error) { return s.repo.List(ctx) }
 
-// Get returns one playlist with its active revision.
+// Get returns one playlist with its active revision. If the playlist is an
+// imported one whose tracklist has not been fetched yet, its tracks are pulled
+// from the streaming service and cached before returning. Hydration failures
+// (no session, network) return the playlist without tracks rather than an
+// error; the next SyncSource retries. Merging is left to SyncSource.
 func (s *Service) Get(ctx context.Context, id string) (playlist.Playlist, error) {
+	item, err := s.repo.Get(ctx, id)
+	if err != nil || !item.TracksStale || len(item.Sources) == 0 {
+		return item, err
+	}
+	src := item.Sources[0]
+	kind := musicsource.Kind(src.Kind)
+	session, err := s.session(kind)
+	if err != nil {
+		s.logger.Warn("hydrate on open: not connected", zap.String("kind", src.Kind), zap.Error(err))
+		return item, nil
+	}
+	provider, err := s.provider(kind)
+	if err != nil {
+		return item, nil
+	}
+	tracks, err := provider.PlaylistTracks(ctx, session, src.ExternalID)
+	if err != nil {
+		s.logger.Warn("hydrate on open failed", zap.String("kind", src.Kind), zap.Error(err))
+		return item, nil
+	}
+	if err := s.repo.SetImportedTracks(ctx, src.Kind, src.ExternalID, tracks); err != nil {
+		return playlist.Playlist{}, err
+	}
 	return s.repo.Get(ctx, id)
 }
 
@@ -242,7 +290,17 @@ func (s *Service) Handoff(playlistID string) (playlist.Job, error) {
 
 type work func(context.Context, string) (string, error)
 
+// submit starts a paid, gated background job.
 func (s *Service) submit(phase string, fn work) (playlist.Job, error) {
+	return s.startJob(phase, fn, s.gate)
+}
+
+// submitSync starts a streaming-sync background job on its own gate.
+func (s *Service) submitSync(phase string, fn work) (playlist.Job, error) {
+	return s.startJob(phase, fn, s.syncGate)
+}
+
+func (s *Service) startJob(phase string, fn work, gate chan struct{}) (playlist.Job, error) {
 	id := uuid.NewString()
 	job := playlist.Job{ID: id, Status: playlist.JobQueued, Phase: phase}
 	ctx, cancel := context.WithCancel(s.ctx)
@@ -251,19 +309,19 @@ func (s *Service) submit(phase string, fn work) (playlist.Job, error) {
 	s.cancels[id] = cancel
 	s.mu.Unlock()
 	s.workers.Add(1)
-	go s.run(ctx, id, fn)
+	go s.run(ctx, id, fn, gate)
 	return job, nil
 }
 
-func (s *Service) run(ctx context.Context, id string, fn work) {
+func (s *Service) run(ctx context.Context, id string, fn work, gate chan struct{}) {
 	defer s.workers.Done()
 	select {
-	case s.gate <- struct{}{}:
+	case gate <- struct{}{}:
 	case <-ctx.Done():
 		s.finish(id, "", ctx.Err())
 		return
 	}
-	defer func() { <-s.gate }()
+	defer func() { <-gate }()
 	now := s.now().UTC()
 	s.mu.Lock()
 	job := s.jobs[id]
@@ -279,6 +337,15 @@ func (s *Service) phase(id, phase string) {
 	s.mu.Lock()
 	job := s.jobs[id]
 	job.Phase = phase
+	s.jobs[id] = job
+	s.mu.Unlock()
+}
+
+// progress records how far an iterating job has got, for a progress bar.
+func (s *Service) progress(id string, completed, total int) {
+	s.mu.Lock()
+	job := s.jobs[id]
+	job.Completed, job.Total = completed, total
 	s.jobs[id] = job
 	s.mu.Unlock()
 }

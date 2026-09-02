@@ -35,6 +35,28 @@ describe("BusyOverlay", () => {
     expect(document.body.style.overflow).toBe("");
   });
 
+  it("shows a progress bar for a job that reports totals", () => {
+    vi.useFakeTimers();
+    render(
+      <BusyOverlay
+        job={{
+          id: "s",
+          status: "running",
+          phase: "TIDAL · Rainy Day",
+          completed: 3,
+          total: 12,
+        }}
+        onCancel={() => undefined}
+      />,
+    );
+    act(() => vi.advanceTimersByTime(3000));
+    const bar = screen.getByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "3");
+    expect(bar).toHaveAttribute("aria-valuemax", "12");
+    expect(bar.firstChild).toHaveStyle({ width: "25%" });
+    expect(screen.getByRole("dialog")).toHaveTextContent("3 of 12 playlists");
+  });
+
   it("stays absent without an active job", () => {
     const { rerender } = render(
       <BusyOverlay job={null} onCancel={() => undefined} />,

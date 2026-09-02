@@ -37,6 +37,11 @@ func (e Effort) Valid() bool {
 }
 
 // Track is a catalog-oriented recording candidate plus curation metadata.
+//
+// ISRC is the International Standard Recording Code for the exact recording. It
+// is authoritative when present: imported playlists carry it from the streaming
+// service, and it is the primary signal for same-music matching. Generated
+// tracks usually leave it nil.
 type Track struct {
 	ID           string   `json:"id"`
 	Position     int      `json:"position"`
@@ -47,6 +52,7 @@ type Track struct {
 	Version      *string  `json:"version"`
 	RemasterYear *int     `json:"remasterYear"`
 	QualityNote  *string  `json:"qualityNote"`
+	ISRC         *string  `json:"isrc"`
 	Rationale    string   `json:"rationale"`
 }
 
@@ -84,15 +90,61 @@ type Revision struct {
 	CreatedAt   time.Time `json:"createdAt"`
 }
 
+// Origin distinguishes a playlist born from a brief from one mirrored from a
+// streaming service.
+const (
+	OriginGenerated = "generated"
+	OriginImported  = "imported"
+)
+
+// PlaylistSource is one place a playlist also lives, shown as a badge in the UI.
+// ExternalID is the service's own id; it drives lazy hydration and is the handle
+// the Unlink control passes back to detach this link.
+type PlaylistSource struct {
+	Kind       string    `json:"kind"`
+	URL        string    `json:"url"`
+	SyncedAt   time.Time `json:"syncedAt"`
+	ExternalID string    `json:"externalId"`
+}
+
+// SourceInput carries the streaming-service facts needed to create or refresh a
+// source link. The application service fills it from a musicsource.RemotePlaylist
+// so internal/storage stays free of provider types.
+type SourceInput struct {
+	Kind            string
+	ExternalID      string
+	ExternalURL     string
+	ETag            string
+	RemoteUpdatedAt time.Time
+	Title           string
+	Description     string
+}
+
+// SourceLink is a stored playlist_sources row, used by sync to diff local state
+// against the service.
+type SourceLink struct {
+	PlaylistID      string
+	Kind            string
+	ExternalID      string
+	ETag            string
+	RemoteUpdatedAt time.Time
+	TracksFetched   bool
+}
+
 // Playlist points to its active revision and latest Soundiiz handoff.
 type Playlist struct {
-	ID              string     `json:"id"`
-	CreatedAt       time.Time  `json:"createdAt"`
-	UpdatedAt       time.Time  `json:"updatedAt"`
-	CurrentRevision Revision   `json:"currentRevision"`
-	RevisionCount   int        `json:"revisionCount"`
-	SoundiizURL     *string    `json:"soundiizUrl,omitempty"`
-	SoundiizExpires *time.Time `json:"soundiizExpiresAt,omitempty"`
+	ID              string           `json:"id"`
+	CreatedAt       time.Time        `json:"createdAt"`
+	UpdatedAt       time.Time        `json:"updatedAt"`
+	CurrentRevision Revision         `json:"currentRevision"`
+	RevisionCount   int              `json:"revisionCount"`
+	Origin          string           `json:"origin"`
+	Sources         []PlaylistSource `json:"sources,omitempty"`
+	SoundiizURL     *string          `json:"soundiizUrl,omitempty"`
+	SoundiizExpires *time.Time       `json:"soundiizExpiresAt,omitempty"`
+	// TracksStale is true for an imported playlist whose tracklist has not been
+	// hydrated yet. Not sent to the frontend.
+	TracksStale bool `json:"-"`
 }
 
 // GenerateRequest contains validated user input for a new playlist job.
@@ -121,11 +173,15 @@ const (
 	JobCancelled JobStatus = "cancelled"
 )
 
-// Job is a client-visible snapshot of asynchronous work.
+// Job is a client-visible snapshot of asynchronous work. Completed and Total
+// drive a progress bar for jobs that iterate a known number of items (a
+// streaming sync); they stay zero for indeterminate work.
 type Job struct {
 	ID         string     `json:"id"`
 	Status     JobStatus  `json:"status"`
 	Phase      string     `json:"phase"`
+	Completed  int        `json:"completed,omitempty"`
+	Total      int        `json:"total,omitempty"`
 	PlaylistID string     `json:"playlistId,omitempty"`
 	Error      string     `json:"error,omitempty"`
 	ErrorCode  string     `json:"errorCode,omitempty"`

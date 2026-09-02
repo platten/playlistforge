@@ -53,12 +53,14 @@ Application data defaults to `os.UserConfigDir()/playlist-forge`. The SQLite dat
 
 ## Package responsibilities
 
-- `internal/playlist` owns dependency-free models, validation, cost estimation, and infrastructure interfaces.
+- `internal/playlist` owns dependency-free models, validation, cost estimation, same-music matching (`SameMusic`, ISRC-first then title/artist), and infrastructure interfaces.
 - `internal/app` implements use cases, background jobs, cancellation, paid-operation serialization, and revision orchestration.
 - `internal/desktop` exposes the narrow presentation contract bound into Wails and validates external URLs before opening them.
 - `internal/bootstrap` composes storage, credentials, providers, logging, and the application service.
 - `internal/openaiapi` owns curator instructions, strict output schemas, the fixed OpenAI endpoint, usage extraction, and provider adaptation.
 - `internal/soundiiz` owns the public import payload and validates returned handoff URLs.
+- `internal/musicsource` is the port for reading a listener's existing playlists from a streaming service; `internal/musicsource/tidal` (OAuth device flow, approved in the system browser) and `internal/musicsource/qobuz` (web-player token captured from the embedded sign-in window) are reverse-engineered adapters using community client credentials and undocumented endpoints, and `internal/musicsource/fake` drives the import pipeline in tests.
+- `internal/connections` owns the per-service streaming session store: OS keyring first, with an automatic 0600 file fallback under the application directory for hosts without a Secret Service (headless Linux, WSL).
 - `internal/storage` owns the SQLite schema and transactions. Playlist edits append immutable revisions.
 - `internal/credentials` owns environment, keyring, and explicitly authorized config-file credential precedence.
 - `internal/logging` owns Zap construction and mandatory secret redaction.
@@ -111,7 +113,9 @@ SQLite stores four related concepts:
 
 Usage is stored as versioned JSON because provider counters can evolve independently from the relational playlist model. Times are UTC RFC 3339 values. Writes that create or activate revisions use SQL transactions.
 
-The schema is embedded with `go:embed` and is idempotent for a new database. A future incompatible change must introduce an explicit versioned migration rather than changing the meaning of an existing column.
+The schema is embedded with `go:embed` and is idempotent for a new database. Additive column changes append an `ALTER TABLE ADD COLUMN` to the `migrations` slice in `sqlite.go`, which tolerates the duplicate-column error on an already-current database; a future incompatible change must introduce an explicit versioned migration rather than changing the meaning of an existing column.
+
+The `Track` shape is the one contract mirrored in four places — `internal/playlist/model.go`, the `tracks` table in `internal/storage`, the generation JSON schema in `internal/openaiapi`, and `web/src/types.ts` — and all four move together. `Track.ISRC` is nullable: imported playlists carry the authoritative code, the model supplies it opportunistically, and generated tracks usually leave it null.
 
 ## Desktop security boundary
 

@@ -12,6 +12,8 @@ export interface Track {
   version: string | null;
   remasterYear: number | null;
   qualityNote: string | null;
+  /** ISRC of the exact recording; authoritative for imported tracks, usually null for generated ones. */
+  isrc: string | null;
   rationale: string;
 }
 
@@ -47,20 +49,44 @@ export interface Revision {
   createdAt: string;
 }
 
+/** A place a playlist also lives on a streaming service. */
+export interface PlaylistSourceLink {
+  kind: string;
+  url: string;
+  syncedAt: string;
+  /** The service's own id for this playlist; passed back to unlink it. */
+  externalId: string;
+}
+
 export interface Playlist {
   id: string;
   createdAt: string;
   updatedAt: string;
   currentRevision: Revision;
   revisionCount: number;
+  /** "generated" (from a brief) or "imported" (mirrors a streaming service). */
+  origin: "generated" | "imported";
+  /** Every service this playlist is linked to; empty for a purely generated one. */
+  sources?: PlaylistSourceLink[];
   soundiizUrl?: string;
   soundiizExpiresAt?: string;
+}
+
+/** Status of one streaming service the desktop build can import from. */
+export interface ConnectionStatus {
+  kind: string;
+  available: boolean;
+  connected: boolean;
+  displayName: string;
 }
 
 export interface Job {
   id: string;
   status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
   phase: string;
+  /** For jobs that iterate a known number of items (a streaming sync). */
+  completed?: number;
+  total?: number;
   playlistId?: string;
   error?: string;
   errorCode?: string;

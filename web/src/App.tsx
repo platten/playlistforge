@@ -1,25 +1,28 @@
 /**
  * The whole interface lives in this file. It is intentionally one module: the
- * app is four views over a shared shell, and there is no routing, data-fetching,
- * or state library to spread across files.
+ * app is a handful of views over a shared shell, and there is no routing,
+ * data-fetching, or state library to spread across files.
  *
  * Structure, top to bottom:
  *   - constants and small pure helpers (BrandMark, icons, `coverStyle`,
- *     `parseRoute`);
- *   - `App`: the shell. Holds the only shared state (config, history, current
- *     job, error banner, theme), owns a tiny History-API router, and exposes
- *     `run()` — the single lifecycle every paid operation goes through so the
- *     busy overlay, refresh, and error handling never drift between views;
- *   - the four page components (`CreatePage`, `HistoryPage`, `SettingsPage`,
- *     `PlaylistPage`) and the row-level pieces they use.
+ *     `parseRoute`, cluster/badge helpers for the streaming views);
+ *   - `App`: the shell. Holds the only shared state (config, history,
+ *     connections, inspiration seed, current job, error banner, theme), owns a
+ *     tiny History-API router, and exposes `run()` — the single lifecycle every
+ *     paid operation goes through so the busy overlay, refresh, and error
+ *     handling never drift between views;
+ *   - the page components (`CreatePage`, `BrowsePage`, `HistoryPage`,
+ *     `SettingsPage`, `PlaylistPage`) and the row-level pieces they use.
  *
  * All backend access is the typed adapter in `./api`; jobs are polled through
  * `waitForJob`. Split a page into its own file once it grows independent state
  * or is reused elsewhere.
  */
 import {
+  Component,
   CSSProperties,
   FormEvent,
+  ReactNode,
   useCallback,
   useEffect,
   useState,
@@ -27,12 +30,136 @@ import {
 import { api, JobError, waitForJob } from "./api";
 import { ApiKeyHelpDialog } from "./ApiKeyHelpDialog";
 import { BusyOverlay } from "./BusyOverlay";
-import type { Config, Effort, Job, Playlist, Track } from "./types";
+import type {
+  Config,
+  ConnectionStatus,
+  Effort,
+  Job,
+  Playlist,
+  Track,
+} from "./types";
 
 type Route =
-  { page: "home" | "history" | "settings" } | { page: "playlist"; id: string };
+  | { page: "home" | "history" | "settings" | "browse" }
+  | { page: "playlist"; id: string };
 
 type Theme = "light" | "dark";
+
+// Streaming services offered for import, in display order. The label is what the
+// UI shows; the kind is what the backend expects.
+const SERVICES: { kind: string; label: string }[] = [
+  { kind: "tidal", label: "TIDAL" },
+  { kind: "qobuz", label: "Qobuz" },
+];
+const serviceLabel = (kind: string) =>
+  SERVICES.find((s) => s.kind === kind)?.label ?? kind;
+
+// The History and Browse views group playlists so a record shows once, in one
+// place: things forged here, then each streaming service. A playlist with more
+// than one home (forged here and also on TIDAL, say) lands in the first that
+// applies and carries a badge for every source.
+type ClusterKey = "created" | "tidal" | "qobuz";
+const CLUSTERS: { key: ClusterKey; label: string }[] = [
+  { key: "created", label: "Forged here" },
+  { key: "tidal", label: "TIDAL" },
+  { key: "qobuz", label: "Qobuz" },
+];
+
+function clusterOf(item: Playlist): ClusterKey {
+  if (item.origin === "generated") return "created";
+  return item.sources?.[0]?.kind === "qobuz" ? "qobuz" : "tidal";
+}
+
+function groupByCluster(history: Playlist[]): Record<ClusterKey, Playlist[]> {
+  const groups: Record<ClusterKey, Playlist[]> = {
+    created: [],
+    tidal: [],
+    qobuz: [],
+  };
+  for (const item of history) groups[clusterOf(item)].push(item);
+  return groups;
+}
+
+// Every place a playlist lives, as short chips: "Forged here" for a generated
+// origin plus one per linked streaming service.
+function playlistBadges(item: Playlist): string[] {
+  const badges: string[] = [];
+  if (item.origin === "generated") badges.push("Forged here");
+  for (const source of item.sources ?? [])
+    badges.push(serviceLabel(source.kind));
+  return badges;
+}
+
+function SourceBadges({ item }: { item: Playlist }) {
+  const badges = playlistBadges(item);
+  if (badges.length === 0) return null;
+  return (
+    <span className="source-badges">
+      {badges.map((badge) => (
+        <span className="source-badge" key={badge}>
+          {badge}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+// The tracklist of a not-yet-hydrated import can be absent; never dereference it
+// directly.
+const trackList = (item: Playlist): Track[] =>
+  item.currentRevision?.tracks ?? [];
+
+// An Error with an empty message must never reach the banner as a blank alert.
+const errorText = (reason: unknown, fallback: string): string =>
+  reason instanceof Error && reason.message.trim() !== ""
+    ? reason.message
+    : fallback;
+
+/**
+ * Stops a render error in one view from blanking the whole app. React needs a
+ * class component for this; it is the only one in the file.
+ */
+class ErrorBoundary extends Component<
+  { children: ReactNode },
+  { message: string | null }
+> {
+  state = { message: null as string | null };
+
+  static getDerivedStateFromError(error: unknown) {
+    return {
+      message: error instanceof Error ? error.message : "Something went wrong",
+    };
+  }
+
+  render() {
+    if (this.state.message === null) return this.props.children;
+    return (
+      <section className="page">
+        <p className="eyebrow">Something broke</p>
+        <h1>This view failed to render</h1>
+        <p className="lede compact">{this.state.message}</p>
+        <div className="button-row">
+          <button
+            className="button primary"
+            onClick={() => window.location.reload()}
+          >
+            Reload
+          </button>
+          <button
+            className="button secondary"
+            onClick={() => {
+              window.history.pushState({}, "", "/");
+              window.location.reload();
+            }}
+          >
+            Back to Create
+          </button>
+        </div>
+      </section>
+    );
+  }
+}
+
 type ErrorNotice = { message: string; code?: string };
 
 const OPENAI_BILLING_URL =
@@ -143,12 +270,13 @@ function coverStyle(seed: string): CSSProperties {
 }
 
 function parseRoute(): Route {
-  // A tiny History API router is sufficient for the four embedded views and
-  // avoids adding a routing dependency to the runtime bundle.
+  // A tiny History API router is sufficient for the embedded views and avoids
+  // adding a routing dependency to the runtime bundle.
   const match = window.location.pathname.match(/^\/playlists\/([^/]+)$/);
   if (match) return { page: "playlist", id: decodeURIComponent(match[1]) };
   if (window.location.pathname === "/history") return { page: "history" };
   if (window.location.pathname === "/settings") return { page: "settings" };
+  if (window.location.pathname === "/browse") return { page: "browse" };
   return { page: "home" };
 }
 
@@ -161,7 +289,12 @@ export default function App() {
   const [route, setRoute] = useState<Route>(parseRoute);
   const [config, setConfig] = useState<Config | null>(null);
   const [history, setHistory] = useState<Playlist[]>([]);
+  const [connections, setConnections] = useState<ConnectionStatus[]>([]);
+  const [inspirationSeed, setInspirationSeed] = useState<string[]>([]);
   const [job, setJob] = useState<Job | null>(null);
+  // A sync should surface its progress bar at once; a generation waits out the
+  // delay so a quick failure doesn't flash the overlay.
+  const [jobImmediate, setJobImmediate] = useState(false);
   const [error, setError] = useState<ErrorNotice | null>(null);
   const [theme, setTheme] = useState<Theme>(readTheme);
 
@@ -175,18 +308,22 @@ export default function App() {
   }, [theme]);
 
   const refresh = useCallback(async () => {
-    const [nextConfig, nextHistory] = await Promise.all([
+    const [nextConfig, nextHistory, nextConnections] = await Promise.all([
       api.config(),
       api.playlists(),
+      api.connections(),
     ]);
     setConfig(nextConfig);
     setHistory(nextHistory);
+    setConnections(nextConnections);
   }, []);
 
   useEffect(() => {
     // Initial data arrives asynchronously; the callback performs the state sync.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    refresh().catch((reason: Error) => setError({ message: reason.message }));
+    refresh().catch((reason: unknown) =>
+      setError({ message: errorText(reason, "Could not load the app") }),
+    );
     const listener = () => setRoute(parseRoute());
     window.addEventListener("popstate", listener);
     return () => window.removeEventListener("popstate", listener);
@@ -202,6 +339,21 @@ export default function App() {
     setError({ message });
   }, []);
 
+  // Reload one streaming service. The backend runs it as a cancellable job with
+  // progress, so it goes through the same `run` lifecycle as a generation: the
+  // busy overlay shows the progress bar, then history refreshes.
+  const syncSource = (kind: string) => {
+    run(() => api.syncSource(kind), undefined, { immediate: true });
+  };
+
+  // Carry a Browse selection back to the composer's reference picker.
+  const applyInspiration = useCallback((ids: string[]) => {
+    setInspirationSeed(ids);
+    window.history.pushState({}, "", "/");
+    setRoute(parseRoute());
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
   /**
    * The shared lifecycle for every paid operation. `operation` starts a job;
    * `run` polls it to completion (feeding the delayed busy overlay), refreshes
@@ -212,8 +364,10 @@ export default function App() {
   async function run(
     operation: () => Promise<Job>,
     after?: (done: Job) => Promise<void> | void,
+    options?: { immediate?: boolean },
   ) {
     setError(null);
+    setJobImmediate(options?.immediate ?? false);
     try {
       const initial = await operation();
       const done = await waitForJob(initial, setJob);
@@ -222,9 +376,12 @@ export default function App() {
       await after?.(done);
     } catch (reason) {
       setJob(null);
+      const message =
+        reason instanceof Error && reason.message.trim() !== ""
+          ? reason.message
+          : "Something went wrong";
       setError({
-        message:
-          reason instanceof Error ? reason.message : "Something went wrong",
+        message,
         code: reason instanceof JobError ? reason.code : undefined,
       });
     }
@@ -257,6 +414,12 @@ export default function App() {
               Create
             </button>
             <button
+              onClick={() => navigate("/browse")}
+              aria-current={route.page === "browse" ? "page" : undefined}
+            >
+              Browse
+            </button>
+            <button
               onClick={() => navigate("/history")}
               aria-current={route.page === "history" ? "page" : undefined}
             >
@@ -278,7 +441,7 @@ export default function App() {
           </button>
         </div>
       </header>
-      {error && (
+      {error && error.message.trim() !== "" && (
         <div className="error-banner" role="alert">
           <div className="error-banner-content">
             <span>{error.message}</span>
@@ -288,7 +451,11 @@ export default function App() {
                 onClick={() =>
                   api
                     .openExternalURL(OPENAI_BILLING_URL)
-                    .catch((reason: Error) => reportError(reason.message))
+                    .catch((reason: unknown) =>
+                      reportError(
+                        errorText(reason, "Could not open the billing page"),
+                      ),
+                    )
                 }
               >
                 Review OpenAI billing <span aria-hidden="true">↗</span>
@@ -305,32 +472,50 @@ export default function App() {
         </div>
       )}
       <main id="main">
-        {route.page === "home" && (
-          <CreatePage
-            config={config}
-            history={history}
-            navigate={navigate}
-            run={run}
-          />
-        )}
-        {route.page === "history" && (
-          <HistoryPage history={history} navigate={navigate} />
-        )}
-        {route.page === "settings" && (
-          <SettingsPage
-            config={config}
-            refresh={refresh}
-            setError={reportError}
-          />
-        )}
-        {route.page === "playlist" && (
-          <PlaylistPage
-            id={route.id}
-            run={run}
-            navigate={navigate}
-            setError={reportError}
-          />
-        )}
+        <ErrorBoundary key={route.page}>
+          {route.page === "home" && (
+            <CreatePage
+              config={config}
+              history={history}
+              inspirationSeed={inspirationSeed}
+              navigate={navigate}
+              run={run}
+            />
+          )}
+          {route.page === "browse" && (
+            <BrowsePage
+              history={history}
+              connections={connections}
+              syncSource={syncSource}
+              onUseAsInspiration={applyInspiration}
+              navigate={navigate}
+            />
+          )}
+          {route.page === "history" && (
+            <HistoryPage
+              history={history}
+              connections={connections}
+              syncSource={syncSource}
+              navigate={navigate}
+            />
+          )}
+          {route.page === "settings" && (
+            <SettingsPage
+              config={config}
+              connections={connections}
+              refresh={refresh}
+              setError={reportError}
+            />
+          )}
+          {route.page === "playlist" && (
+            <PlaylistPage
+              id={route.id}
+              run={run}
+              navigate={navigate}
+              setError={reportError}
+            />
+          )}
+        </ErrorBoundary>
       </main>
       <footer>
         <span>
@@ -339,7 +524,7 @@ export default function App() {
         <span>Soundiiz completes transfers on its own site.</span>
         <span>© 2026 Paul Pietkiewicz · MIT License</span>
       </footer>
-      <BusyOverlay job={job} onCancel={cancel} />
+      <BusyOverlay job={job} immediate={jobImmediate} onCancel={cancel} />
     </div>
   );
 }
@@ -353,18 +538,28 @@ export default function App() {
 function CreatePage({
   config,
   history,
+  inspirationSeed,
   navigate,
   run,
 }: {
   config: Config | null;
   history: Playlist[];
+  inspirationSeed: string[];
   navigate: (path: string) => void;
   run: (op: () => Promise<Job>, after?: (job: Job) => void) => void;
 }) {
   const [prompt, setPrompt] = useState("");
   const [trackCount, setTrackCount] = useState(30);
   const [effort, setEffort] = useState<Effort>("medium");
-  const [references, setReferences] = useState<string[]>([]);
+  // Seeded from a Browse selection; the picker below can still add or remove.
+  const [references, setReferences] = useState<string[]>(inspirationSeed);
+
+  const titleOf = (id: string) =>
+    history.find((item) => item.id === id)?.currentRevision.title ?? "Playlist";
+  const toggleReference = (id: string, on: boolean) =>
+    setReferences((current) =>
+      on ? [...current, id] : current.filter((ref) => ref !== id),
+    );
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -448,24 +643,42 @@ function CreatePage({
         {history.length > 0 && (
           <fieldset className="references">
             <legend>
-              Use previous playlists as inspiration <span>(optional)</span>
+              Use existing playlists as inspiration <span>(optional)</span>
             </legend>
             {history.slice(0, 8).map((item) => (
               <label key={item.id}>
                 <input
                   type="checkbox"
                   checked={references.includes(item.id)}
-                  onChange={(e) =>
-                    setReferences(
-                      e.target.checked
-                        ? [...references, item.id]
-                        : references.filter((id) => id !== item.id),
-                    )
-                  }
+                  onChange={(e) => toggleReference(item.id, e.target.checked)}
                 />
                 <span>{item.currentRevision.title}</span>
+                <SourceBadges item={item} />
               </label>
             ))}
+            {references
+              .filter(
+                (id) => !history.slice(0, 8).some((item) => item.id === id),
+              )
+              .map((id) => (
+                <span className="reference-chip" key={id}>
+                  {titleOf(id)}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${titleOf(id)}`}
+                    onClick={() => toggleReference(id, false)}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            <button
+              type="button"
+              className="browse-link"
+              onClick={() => navigate("/browse")}
+            >
+              Browse all playlists <span aria-hidden="true">→</span>
+            </button>
           </fieldset>
         )}
         <button
@@ -491,47 +704,214 @@ function CreatePage({
  */
 function HistoryPage({
   history,
+  connections,
+  syncSource,
   navigate,
 }: {
   history: Playlist[];
+  connections: ConnectionStatus[];
+  syncSource: (kind: string) => void;
   navigate: (path: string) => void;
 }) {
+  const groups = groupByCluster(history);
   return (
     <section className="page">
-      <p className="eyebrow">Your library</p>
-      <h1>Playlist history</h1>
-      <p className="lede compact">
-        Every edit becomes a revision, so your latest tracklist stays available
-        for future inspiration.
-      </p>
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">Your library</p>
+          <h1>Playlist history</h1>
+          <p className="lede compact">
+            Everything you can draw on: playlists forged here and read-only
+            mirrors of what already lives on your streaming services.
+          </p>
+        </div>
+        <ReloadControls connections={connections} syncSource={syncSource} />
+      </div>
       {history.length === 0 ? (
         <div className="empty card">
           <h2>No playlists yet</h2>
-          <p>Your first creation will appear here.</p>
+          <p>
+            Forge one from a brief, or connect a streaming service in Settings
+            to mirror the playlists you already have.
+          </p>
           <button className="button primary" onClick={() => navigate("/")}>
             Create one
           </button>
         </div>
       ) : (
-        <div className="history-grid">
-          {history.map((item) => (
-            <button
-              className="history-card card"
-              key={item.id}
-              onClick={() => navigate(`/playlists/${item.id}`)}
-            >
-              <span className="history-count">
-                {item.currentRevision.tracks.length} tracks
-              </span>
-              <h2>{item.currentRevision.title}</h2>
-              <p>{item.currentRevision.description}</p>
-              <span>
-                Revision {item.revisionCount} ·{" "}
-                {new Date(item.updatedAt).toLocaleDateString()}
-              </span>
-            </button>
-          ))}
+        CLUSTERS.filter((cluster) => groups[cluster.key].length > 0).map(
+          (cluster) => (
+            <div className="cluster" key={cluster.key}>
+              <h2 className="cluster-heading">
+                {cluster.label}
+                <span>{groups[cluster.key].length}</span>
+              </h2>
+              <div className="history-grid">
+                {groups[cluster.key].map((item) => (
+                  <button
+                    className="history-card card"
+                    key={item.id}
+                    onClick={() => navigate(`/playlists/${item.id}`)}
+                  >
+                    <span className="history-count">
+                      {trackList(item).length} tracks
+                    </span>
+                    <h3>{item.currentRevision.title}</h3>
+                    <p>{item.currentRevision.description}</p>
+                    <SourceBadges item={item} />
+                    <span>
+                      Revision {item.revisionCount} ·{" "}
+                      {new Date(item.updatedAt).toLocaleDateString()}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ),
+        )
+      )}
+    </section>
+  );
+}
+
+/**
+ * The per-service Reload buttons shared by History and Browse. Only connected
+ * services appear; the sync runs as a background job, so progress and
+ * cancellation live in the shared busy overlay rather than here.
+ */
+function ReloadControls({
+  connections,
+  syncSource,
+}: {
+  connections: ConnectionStatus[];
+  syncSource: (kind: string) => void;
+}) {
+  const connected = connections.filter((c) => c.connected);
+  if (connected.length === 0) return null;
+  return (
+    <div className="reload-controls">
+      {connected.map((c) => (
+        <button
+          key={c.kind}
+          className="button secondary"
+          onClick={() => syncSource(c.kind)}
+        >
+          Reload {serviceLabel(c.kind)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The clustered picker. Every playlist appears once — under "Forged here" or the
+ * first service it is linked to — with a checkbox and a badge per source. Each
+ * connected service gets a Reload; the sticky footer carries the current
+ * selection into the composer's reference list.
+ */
+function BrowsePage({
+  history,
+  connections,
+  syncSource,
+  onUseAsInspiration,
+  navigate,
+}: {
+  history: Playlist[];
+  connections: ConnectionStatus[];
+  syncSource: (kind: string) => void;
+  onUseAsInspiration: (ids: string[]) => void;
+  navigate: (path: string) => void;
+}) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const groups = groupByCluster(history);
+  const toggle = (id: string) =>
+    setSelected((current) =>
+      current.includes(id) ? current.filter((x) => x !== id) : [...current, id],
+    );
+
+  return (
+    <section className="page browse-page">
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">Pick your references</p>
+          <h1>Browse all playlists</h1>
+          <p className="lede compact">
+            Choose any mix of playlists — forged here or mirrored from a service
+            — to seed the composer's inspiration list.
+          </p>
         </div>
+        <ReloadControls connections={connections} syncSource={syncSource} />
+      </div>
+
+      {history.length === 0 ? (
+        <div className="empty card">
+          <h2>Nothing to browse yet</h2>
+          <p>
+            Forge a playlist, or connect TIDAL or Qobuz in Settings to mirror
+            the ones you already have.
+          </p>
+          <button className="button primary" onClick={() => navigate("/")}>
+            Back to Create
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="browse-list">
+            {CLUSTERS.filter((cluster) => groups[cluster.key].length > 0).map(
+              (cluster) => (
+                <div className="cluster" key={cluster.key}>
+                  <h2 className="cluster-heading">
+                    {cluster.label}
+                    <span>{groups[cluster.key].length}</span>
+                  </h2>
+                  <ul className="browse-cluster">
+                    {groups[cluster.key].map((item) => (
+                      <li key={item.id}>
+                        <label className="browse-row">
+                          <input
+                            type="checkbox"
+                            checked={selected.includes(item.id)}
+                            onChange={() => toggle(item.id)}
+                          />
+                          <span className="browse-row-main">
+                            <span className="browse-row-title">
+                              {item.currentRevision.title}
+                            </span>
+                            <span className="browse-row-meta">
+                              {trackList(item).length} tracks · updated{" "}
+                              {new Date(item.updatedAt).toLocaleDateString()}
+                            </span>
+                          </span>
+                          <SourceBadges item={item} />
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ),
+            )}
+          </div>
+          <div className="browse-footer">
+            <span>{selected.length} selected</span>
+            <div>
+              <button
+                className="button ghost"
+                type="button"
+                onClick={() => navigate("/")}
+              >
+                Cancel
+              </button>
+              <button
+                className="button primary"
+                type="button"
+                disabled={selected.length === 0}
+                onClick={() => onUseAsInspiration(selected)}
+              >
+                Use as inspiration ({selected.length})
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </section>
   );
@@ -545,10 +925,12 @@ function HistoryPage({
  */
 function SettingsPage({
   config,
+  connections,
   refresh,
   setError,
 }: {
   config: Config | null;
+  connections: ConnectionStatus[];
   refresh: () => Promise<void>;
   setError: (message: string) => void;
 }) {
@@ -570,7 +952,7 @@ function SettingsPage({
       );
       await refresh();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not save key");
+      setError(errorText(reason, "Could not save key"));
     } finally {
       setSaving(false);
     }
@@ -582,9 +964,7 @@ function SettingsPage({
       setSaved("Key removed.");
       await refresh();
     } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : "Could not remove key",
-      );
+      setError(errorText(reason, "Could not remove key"));
     }
   }
   return (
@@ -690,11 +1070,113 @@ function SettingsPage({
           </dl>
         </aside>
       </div>
+      <h1 className="settings-section">Streaming connections</h1>
+      <p className="lede compact">
+        Sign in to mirror the playlists you already have. Imported playlists are
+        read-only snapshots — inspiration and a Soundiiz handoff source, never
+        overwritten here. Credentials live only in your OS credential store.
+      </p>
+      <div className="connections-list card">
+        {SERVICES.map(({ kind }) => {
+          const status = connections.find((c) => c.kind === kind);
+          return (
+            <ConnectionRow
+              key={kind}
+              kind={kind}
+              status={status}
+              refresh={refresh}
+              setError={setError}
+            />
+          );
+        })}
+      </div>
       <ApiKeyHelpDialog
         open={showKeyHelp}
         onClose={() => setShowKeyHelp(false)}
       />
     </section>
+  );
+}
+
+/**
+ * One streaming service in Settings: its connection state and a Connect or
+ * Disconnect button. Connect opens the embedded sign-in window in Go; when the
+ * desktop build has no adapter for the service the row is shown as unavailable.
+ */
+function ConnectionRow({
+  kind,
+  status,
+  refresh,
+  setError,
+}: {
+  kind: string;
+  status: ConnectionStatus | undefined;
+  refresh: () => Promise<void>;
+  setError: (message: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const available = status?.available ?? false;
+  const connected = status?.connected ?? false;
+
+  async function connect() {
+    setError("");
+    setBusy(true);
+    try {
+      await api.connectService(kind);
+      await refresh();
+    } catch (reason) {
+      setError(errorText(reason, `Could not connect ${serviceLabel(kind)}`));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disconnect() {
+    setError("");
+    setBusy(true);
+    try {
+      await api.disconnectService(kind);
+      await refresh();
+    } catch (reason) {
+      setError(errorText(reason, `Could not disconnect ${serviceLabel(kind)}`));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="connection-row">
+      <div className="connection-id">
+        <strong>{serviceLabel(kind)}</strong>
+        <span className={`connection-state${connected ? " on" : ""}`}>
+          {!available
+            ? "Not available in this build"
+            : connected
+              ? `Connected${status?.displayName ? ` · ${status.displayName}` : ""}`
+              : "Not connected"}
+        </span>
+      </div>
+      {available &&
+        (connected ? (
+          <button
+            className="button danger"
+            type="button"
+            disabled={busy}
+            onClick={disconnect}
+          >
+            {busy ? "Working…" : "Disconnect"}
+          </button>
+        ) : (
+          <button
+            className="button secondary"
+            type="button"
+            disabled={busy}
+            onClick={connect}
+          >
+            {busy ? "Waiting for sign-in…" : "Connect"}
+          </button>
+        ))}
+    </div>
   );
 }
 
@@ -723,7 +1205,9 @@ function PlaylistPage({
   const [effort, setEffort] = useState<Effort>("medium");
   const load = useCallback(() => api.playlist(id).then(setItem), [id]);
   useEffect(() => {
-    load().catch((reason: Error) => setError(reason.message));
+    load().catch((reason: unknown) =>
+      setError(errorText(reason, "Could not load the playlist")),
+    );
   }, [load, setError]);
   if (!item)
     return (
@@ -752,6 +1236,19 @@ function PlaylistPage({
       },
     );
   }
+  async function unlink(kind: string, externalId: string) {
+    setError("");
+    try {
+      setItem(await api.unlinkSource(id, kind, externalId));
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : `Could not unlink ${serviceLabel(kind)}`,
+      );
+    }
+  }
+  const readOnly = item.origin === "imported";
   return (
     <section className="page playlist-page">
       <button className="back-link" onClick={() => navigate("/history")}>
@@ -759,18 +1256,24 @@ function PlaylistPage({
       </button>
       <div className="playlist-heading">
         <div>
-          <p className="eyebrow">Preview · revision {item.revisionCount}</p>
+          <p className="eyebrow">
+            {readOnly
+              ? "Imported · read-only snapshot"
+              : `Preview · revision ${item.revisionCount}`}
+          </p>
           <h1>{revision.title}</h1>
           <p className="lede compact">{revision.description}</p>
+          <SourceBadges item={item} />
         </div>
-        <UsageCard item={item} />
+        {!readOnly && <UsageCard item={item} />}
       </div>
       <div className="playlist-workspace">
         <div className="tracklist card" aria-label="Playlist tracks">
-          {revision.tracks.map((track) => (
+          {trackList(item).map((track) => (
             <TrackRow
               key={track.id}
               track={track}
+              readOnly={readOnly}
               onRemove={async () => {
                 try {
                   const updated = await api.removeTrack(id, track.id);
@@ -790,34 +1293,74 @@ function PlaylistPage({
           ))}
         </div>
         <aside className="actions-column">
-          <form className="card refine-card" onSubmit={submitRefine}>
-            <h2>Shape the mix</h2>
-            <label htmlFor="refine-prompt">Refinement request</label>
-            <textarea
-              id="refine-prompt"
-              required
-              minLength={3}
-              maxLength={4000}
-              value={refine}
-              onChange={(e) => setRefine(e.target.value)}
-              placeholder="Make the middle more adventurous, but preserve the soft landing…"
-            />
-            <label>
-              Reasoning
-              <select
-                value={effort}
-                onChange={(e) => setEffort(e.target.value as Effort)}
-              >
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="xhigh">Extra high</option>
-                <option value="max">Maximum</option>
-              </select>
-            </label>
-            <button className="button secondary" type="submit">
-              Refine full playlist
-            </button>
-          </form>
+          {!readOnly && (
+            <form className="card refine-card" onSubmit={submitRefine}>
+              <h2>Shape the mix</h2>
+              <label htmlFor="refine-prompt">Refinement request</label>
+              <textarea
+                id="refine-prompt"
+                required
+                minLength={3}
+                maxLength={4000}
+                value={refine}
+                onChange={(e) => setRefine(e.target.value)}
+                placeholder="Make the middle more adventurous, but preserve the soft landing…"
+              />
+              <label>
+                Reasoning
+                <select
+                  value={effort}
+                  onChange={(e) => setEffort(e.target.value as Effort)}
+                >
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="xhigh">Extra high</option>
+                  <option value="max">Maximum</option>
+                </select>
+              </label>
+              <button className="button secondary" type="submit">
+                Refine full playlist
+              </button>
+            </form>
+          )}
+          {readOnly && (
+            <div className="card notice-card">
+              <h2>Read-only snapshot</h2>
+              <p>
+                This playlist mirrors a streaming service. Its tracklist is
+                refreshed on Reload and can't be edited here — use it as
+                inspiration or hand it to Soundiiz.
+              </p>
+            </div>
+          )}
+          {item.sources && item.sources.length > 0 && (
+            <div className="card sources-card">
+              <h2>Linked services</h2>
+              <ul>
+                {item.sources.map((source) => (
+                  <li key={`${source.kind}:${source.externalId}`}>
+                    <div>
+                      <strong>{serviceLabel(source.kind)}</strong>
+                      <span>
+                        synced {new Date(source.syncedAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <button
+                      className="button tiny ghost"
+                      type="button"
+                      onClick={() => unlink(source.kind, source.externalId)}
+                    >
+                      Unlink
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <p className="form-note">
+                Unlinking splits this service back into its own snapshot and
+                stops it re-merging on the next Reload.
+              </p>
+            </div>
+          )}
           <div className="card transfer-card">
             <h2>Open in Soundiiz</h2>
             <p>
@@ -859,16 +1402,19 @@ function PlaylistPage({
 /**
  * One row of the tracklist: generated sleeve, title/artists/album, the
  * curator's rationale, an optional quality note, and remove/replace controls.
- * Replace reveals an inline guidance field.
+ * Replace reveals an inline guidance field. Imported playlists are read-only
+ * snapshots, so `readOnly` drops the controls entirely.
  */
 function TrackRow({
   track,
+  readOnly,
   onRemove,
   onReplace,
 }: {
   track: Track;
-  onRemove: () => void;
-  onReplace: (prompt: string) => void;
+  readOnly?: boolean;
+  onRemove?: () => void;
+  onReplace?: (prompt: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [prompt, setPrompt] = useState("");
@@ -904,7 +1450,7 @@ function TrackRow({
             className="replace-form"
             onSubmit={(e) => {
               e.preventDefault();
-              onReplace(prompt);
+              onReplace?.(prompt);
               setEditing(false);
             }}
           >
@@ -930,17 +1476,19 @@ function TrackRow({
           </form>
         )}
       </div>
-      <div className="track-actions">
-        <button
-          onClick={() => setEditing(true)}
-          aria-label={`Replace ${track.title}`}
-        >
-          Replace
-        </button>
-        <button onClick={onRemove} aria-label={`Remove ${track.title}`}>
-          Remove
-        </button>
-      </div>
+      {!readOnly && (
+        <div className="track-actions">
+          <button
+            onClick={() => setEditing(true)}
+            aria-label={`Replace ${track.title}`}
+          >
+            Replace
+          </button>
+          <button onClick={onRemove} aria-label={`Remove ${track.title}`}>
+            Remove
+          </button>
+        </div>
+      )}
     </article>
   );
 }
@@ -954,7 +1502,7 @@ function UsageCard({ item }: { item: Playlist }) {
   const usage = item.currentRevision.usage;
   return (
     <div className="usage-card card">
-      <span>{item.currentRevision.tracks.length} tracks</span>
+      <span>{trackList(item).length} tracks</span>
       <span>{(usage.totalTokens || 0).toLocaleString()} tokens</span>
       <strong>≈ ${usage.estimatedCostUsd.toFixed(4)}</strong>
       <small>

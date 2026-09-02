@@ -44,6 +44,11 @@ describe("Wails API adapter", () => {
     await api.job("j");
     await api.cancelJob("j");
     await api.openExternalURL("https://soundiiz.com/go/import-playlist/a");
+    await api.connections();
+    await api.connectService("tidal");
+    await api.disconnectService("qobuz");
+    await api.syncSource("tidal");
+    await api.unlinkSource("p", "qobuz", "ext-1");
 
     expect(byName).toHaveBeenCalledWith(`${PREFIX}Config`);
     expect(byName).toHaveBeenCalledWith(`${PREFIX}SaveKey`, "sk-test", false);
@@ -59,6 +64,16 @@ describe("Wails API adapter", () => {
     expect(byName).toHaveBeenCalledWith(
       `${PREFIX}OpenExternalURL`,
       "https://soundiiz.com/go/import-playlist/a",
+    );
+    expect(byName).toHaveBeenCalledWith(`${PREFIX}Connections`);
+    expect(byName).toHaveBeenCalledWith(`${PREFIX}ConnectService`, "tidal");
+    expect(byName).toHaveBeenCalledWith(`${PREFIX}DisconnectService`, "qobuz");
+    expect(byName).toHaveBeenCalledWith(`${PREFIX}SyncSource`, "tidal");
+    expect(byName).toHaveBeenCalledWith(
+      `${PREFIX}UnlinkSource`,
+      "p",
+      "qobuz",
+      "ext-1",
     );
   });
 

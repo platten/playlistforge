@@ -5,7 +5,7 @@
  * `waitForJob` polls it to a terminal state.
  */
 import { Call } from "@wailsio/runtime";
-import type { Config, Effort, Job, Playlist } from "./types";
+import type { Config, ConnectionStatus, Effort, Job, Playlist } from "./types";
 
 /** The desktop backend surface, mirroring the exported methods on Go's `desktop.API`. */
 export interface BackendAPI {
@@ -32,6 +32,18 @@ export interface BackendAPI {
   job(id: string): Promise<Job>;
   cancelJob(id: string): Promise<void>;
   openExternalURL(url: string): Promise<void>;
+
+  // Streaming import.
+  connections(): Promise<ConnectionStatus[]>;
+  connectService(kind: string): Promise<ConnectionStatus>;
+  disconnectService(kind: string): Promise<void>;
+  /** Starts a background sync job; poll it with `waitForJob`. */
+  syncSource(kind: string): Promise<Job>;
+  unlinkSource(
+    playlistId: string,
+    kind: string,
+    externalId: string,
+  ): Promise<Playlist>;
 }
 
 // Wails v3 keys every bound method by "<package path>.<type>.<method>". This is
@@ -44,7 +56,14 @@ async function invoke<T>(method: string, ...args: unknown[]): Promise<T> {
   try {
     return (await Call.ByName(`${SERVICE}.${method}`, ...args)) as T;
   } catch (reason) {
-    throw reason instanceof Error ? reason : new Error(String(reason));
+    if (reason instanceof Error && reason.message.trim() !== "") throw reason;
+    const text = String(reason ?? "").trim();
+    throw new Error(
+      text && text !== "undefined" && text !== "null"
+        ? text
+        : `The ${method} request failed`,
+      { cause: reason },
+    );
   }
 }
 
@@ -66,6 +85,12 @@ export const api: BackendAPI = {
   job: (id) => invoke("GetJob", id),
   cancelJob: (id) => invoke("CancelJob", id),
   openExternalURL: (url) => invoke("OpenExternalURL", url),
+  connections: () => invoke("Connections"),
+  connectService: (kind) => invoke("ConnectService", kind),
+  disconnectService: (kind) => invoke("DisconnectService", kind),
+  syncSource: (kind) => invoke("SyncSource", kind),
+  unlinkSource: (playlistId, kind, externalId) =>
+    invoke("UnlinkSource", playlistId, kind, externalId),
 };
 
 /**
