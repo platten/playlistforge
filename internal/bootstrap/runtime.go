@@ -74,7 +74,7 @@ func New(options Options) (*Runtime, error) {
 		musicsource.KindTIDAL: tidal.New(),
 		musicsource.KindQobuz: qobuz.New(),
 	}
-	service := app.New(ctx, repo, openaiapi.New(keys, logger), soundiiz.New(), connections.New(), sources, logger)
+	service := app.New(ctx, repo, openaiapi.New(keys, logger), soundiiz.New(), connections.New(configDir), sources, logger)
 	return &Runtime{
 		Service:   service,
 		Keys:      keys,
