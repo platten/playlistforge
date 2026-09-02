@@ -222,7 +222,7 @@ pnpm run build
 
 CI enforces at least 95% statement coverage across the business and external-API boundary packages (`app`, `playlist`, `openaiapi`, and `soundiiz`). Frontend API, job-polling, and slow-operation state are held to 95% for statements, branches, functions, and lines; page-level tests additionally cover rendering and XSS-safe treatment of user text. Persistence, HTTP routing, origin/host protections, credential fallback, cancellation, logging, and responsive rendering have dedicated tests.
 
-Pushing a tag such as `v1.2.3` runs `.github/workflows/release.yml`. After the quality gate, it builds all six binaries, publishes the multi-platform image to GitHub Container Registry, adds provenance and an OCI SBOM attestation, generates a downloadable SPDX JSON SBOM from the published image, refreshes SHA-256 checksums, and creates or updates the GitHub Release with the binaries, checksums, and SBOM.
+Pushing a tag such as `v1.2.3` runs `.github/workflows/release.yml`. After the quality gate, it builds all six binaries, submits the versioned Windows installer to VirusTotal, publishes the multi-platform image to GitHub Container Registry, adds provenance and an OCI SBOM attestation, generates a downloadable SPDX JSON SBOM from the published image, refreshes SHA-256 checksums, and creates or updates the GitHub Release with the binaries, checksums, and SBOM. VirusTotal submission requires a repository Actions secret named `VIRUSTOTAL_API_KEY`; the release fails rather than silently skipping the scan when the secret is unavailable.
 
 ## Security notes
 
