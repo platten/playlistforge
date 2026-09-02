@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"playlistforge/internal/musicsource"
 	"playlistforge/internal/playlist"
 	"playlistforge/internal/soundiiz"
 )
@@ -27,6 +28,14 @@ type importer interface {
 	Import(context.Context, playlist.Revision) (soundiiz.Result, error)
 }
 
+// sessionStore is the per-service keyring token store (internal/connections).
+type sessionStore interface {
+	Get(name string) ([]byte, error)
+	Set(name string, blob []byte) error
+	Delete(name string) error
+	Has(name string) bool
+}
+
 // Service coordinates asynchronous playlist operations and local persistence.
 // Jobs live only for the lifetime of the process; completed playlists and
 // revisions are persisted through the Repository interface.
@@ -34,6 +43,8 @@ type Service struct {
 	repo      playlist.Repository
 	generator playlist.Generator
 	importer  importer
+	sessions  sessionStore
+	sources   musicsource.Registry
 	logger    *zap.Logger
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -48,9 +59,16 @@ type Service struct {
 }
 
 // New constructs a Service whose jobs are cancelled when parent is cancelled.
-func New(parent context.Context, repo playlist.Repository, generator playlist.Generator, importer importer, logger *zap.Logger) *Service {
+// sessions and sources may be nil where streaming import is not wired.
+func New(parent context.Context, repo playlist.Repository, generator playlist.Generator, importer importer, sessions sessionStore, sources musicsource.Registry, logger *zap.Logger) *Service {
 	ctx, cancel := context.WithCancel(parent)
-	return &Service{repo: repo, generator: generator, importer: importer, logger: logger, ctx: ctx, cancel: cancel, jobs: make(map[string]playlist.Job), cancels: make(map[string]context.CancelFunc), gate: make(chan struct{}, 1), now: time.Now}
+	return &Service{
+		repo: repo, generator: generator, importer: importer,
+		sessions: sessions, sources: sources, logger: logger,
+		ctx: ctx, cancel: cancel,
+		jobs: make(map[string]playlist.Job), cancels: make(map[string]context.CancelFunc),
+		gate: make(chan struct{}, 1), now: time.Now,
+	}
 }
 
 // Close cancels queued and running jobs and waits for their goroutines to exit.

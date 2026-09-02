@@ -13,8 +13,10 @@ import (
 	"go.uber.org/zap"
 
 	"playlistforge/internal/app"
+	"playlistforge/internal/connections"
 	"playlistforge/internal/credentials"
 	"playlistforge/internal/logging"
+	"playlistforge/internal/musicsource"
 	"playlistforge/internal/openaiapi"
 	"playlistforge/internal/soundiiz"
 	"playlistforge/internal/storage"
@@ -64,7 +66,10 @@ func New(options Options) (*Runtime, error) {
 		return nil, err
 	}
 	keys := credentials.New(configDir)
-	service := app.New(ctx, repo, openaiapi.New(keys, logger), soundiiz.New(), logger)
+	// The streaming-source registry is empty until the TIDAL and Qobuz adapters
+	// are wired; Connections() then reports each service as unavailable.
+	sources := musicsource.Registry{}
+	service := app.New(ctx, repo, openaiapi.New(keys, logger), soundiiz.New(), connections.New(), sources, logger)
 	return &Runtime{
 		Service:   service,
 		Keys:      keys,
