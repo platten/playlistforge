@@ -59,7 +59,7 @@ Application data defaults to `os.UserConfigDir()/playlist-forge`. The SQLite dat
 - `internal/bootstrap` composes storage, credentials, providers, logging, and the application service.
 - `internal/openaiapi` owns curator instructions, strict output schemas, the fixed OpenAI endpoint, usage extraction, and provider adaptation.
 - `internal/soundiiz` owns the public import payload and validates returned handoff URLs.
-- `internal/musicsource` is the port for reading a listener's existing playlists from a streaming service; `internal/musicsource/tidal` and `internal/musicsource/qobuz` are reverse-engineered adapters (community client credentials, undocumented endpoints, OAuth PKCE / web-player token via the desktop sign-in window), and `internal/musicsource/fake` drives the import pipeline in tests.
+- `internal/musicsource` is the port for reading a listener's existing playlists from a streaming service; `internal/musicsource/tidal` (OAuth device flow, approved in the system browser) and `internal/musicsource/qobuz` (web-player token captured from the embedded sign-in window) are reverse-engineered adapters using community client credentials and undocumented endpoints, and `internal/musicsource/fake` drives the import pipeline in tests.
 - `internal/connections` owns the per-service streaming session store: OS keyring first, with an automatic 0600 file fallback under the application directory for hosts without a Secret Service (headless Linux, WSL).
 - `internal/storage` owns the SQLite schema and transactions. Playlist edits append immutable revisions.
 - `internal/credentials` owns environment, keyring, and explicitly authorized config-file credential precedence.

@@ -2,99 +2,187 @@ package tidal
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strconv"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"playlistforge/internal/musicsource"
 )
 
 // newTestProvider points a Provider at a stub server that stands in for both
-// auth.tidal.com and api.tidal.com.
-func newTestProvider(t *testing.T, handler http.Handler) (*Provider, *httptest.Server) {
+// auth.tidal.com and api.tidal.com, with a fast poll interval.
+func newTestProvider(t *testing.T, handler http.Handler) *Provider {
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	p := New()
-	p.loginBase = "https://login.tidal.com"
 	p.authBase = srv.URL
 	p.apiBase = srv.URL
-	return p, srv
+	p.minPollInterval = time.Millisecond
+	return p
 }
 
-func TestAuthRequestPKCE(t *testing.T) {
-	p := New()
+func TestAuthRequestStartsDeviceFlow(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/oauth2/device_authorization", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		if r.PostForm.Get("client_id") != clientID || r.PostForm.Get("scope") != scope {
+			t.Fatalf("unexpected device-auth form: %v", r.PostForm)
+		}
+		writeJSON(w, map[string]any{
+			"deviceCode":              "dev-1",
+			"userCode":                "ABCD-EFGH",
+			"verificationUri":         "link.tidal.com",
+			"verificationUriComplete": "link.tidal.com/ABCDEFGH",
+			"expiresIn":               300,
+			"interval":                0.001,
+		})
+	})
+	p := newTestProvider(t, mux)
+
 	req, err := p.AuthRequest()
 	if err != nil {
 		t.Fatalf("AuthRequest: %v", err)
 	}
-	if req.RedirectPrefix != redirectURI {
-		t.Fatalf("redirect prefix = %q, want %q", req.RedirectPrefix, redirectURI)
+	if !req.OpenInBrowser {
+		t.Fatal("device flow must open in the system browser")
 	}
-	u, err := url.Parse(req.URL)
-	if err != nil {
-		t.Fatalf("parse auth URL: %v", err)
+	if req.URL != "https://link.tidal.com/ABCDEFGH" {
+		t.Fatalf("verification URL = %q", req.URL)
 	}
-	q := u.Query()
-	if q.Get("code_challenge_method") != "S256" {
-		t.Fatalf("challenge method = %q", q.Get("code_challenge_method"))
-	}
-	if q.Get("client_id") != clientID || q.Get("redirect_uri") != redirectURI {
-		t.Fatalf("unexpected client_id/redirect_uri: %v", q)
-	}
-
-	// The stashed verifier must hash to the challenge in the URL.
-	if p.pendingVerifier == "" {
-		t.Fatal("verifier was not stashed")
-	}
-	sum := sha256.Sum256([]byte(p.pendingVerifier))
-	want := base64.RawURLEncoding.EncodeToString(sum[:])
-	if q.Get("code_challenge") != want {
-		t.Fatalf("challenge = %q, want %q", q.Get("code_challenge"), want)
+	p.mu.Lock()
+	pending := p.pending
+	p.mu.Unlock()
+	if pending.deviceCode != "dev-1" || pending.expires.IsZero() {
+		t.Fatalf("pending device not stored: %+v", pending)
 	}
 }
 
-func TestCompleteListAndTracks(t *testing.T) {
+func TestCompletePollsUntilApproved(t *testing.T) {
+	var polls int32
 	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/oauth2/token", func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseForm(); err != nil {
-			t.Fatalf("parse form: %v", err)
-		}
-		if r.PostForm.Get("grant_type") != "authorization_code" {
-			t.Fatalf("grant_type = %q", r.PostForm.Get("grant_type"))
-		}
-		if r.PostForm.Get("code_verifier") == "" || r.PostForm.Get("code") != "the-code" {
-			t.Fatalf("missing code/verifier: %v", r.PostForm)
-		}
+	mux.HandleFunc("/v1/oauth2/device_authorization", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{
-			"access_token":  "access-1",
-			"refresh_token": "refresh-1",
-			"expires_in":    3600,
-			"user": map[string]any{
-				"userId":      49927020,
-				"countryCode": "NO",
-				"username":    "listener@example.com",
-			},
+			"deviceCode": "dev-1", "userCode": "X", "verificationUri": "link.tidal.com",
+			"verificationUriComplete": "link.tidal.com/X", "expiresIn": 300, "interval": 0.001,
 		})
 	})
+	mux.HandleFunc("/v1/oauth2/token", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		if r.PostForm.Get("grant_type") != deviceCodeGrant || r.PostForm.Get("device_code") != "dev-1" {
+			t.Fatalf("unexpected token form: %v", r.PostForm)
+		}
+		if n := atomic.AddInt32(&polls, 1); n < 3 {
+			w.WriteHeader(http.StatusBadRequest)
+			writeJSON(w, map[string]any{"error": "authorization_pending"})
+			return
+		}
+		writeJSON(w, map[string]any{
+			"access_token": "access-1", "refresh_token": "refresh-1", "expires_in": 3600,
+		})
+	})
+	mux.HandleFunc("/sessions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer access-1" {
+			t.Fatalf("sessions auth header = %q", r.Header.Get("Authorization"))
+		}
+		writeJSON(w, map[string]any{"sessionId": "s1", "userId": 49927020, "countryCode": "NO"})
+	})
+	p := newTestProvider(t, mux)
+
+	if _, err := p.AuthRequest(); err != nil {
+		t.Fatalf("AuthRequest: %v", err)
+	}
+	session, err := p.Complete(context.Background(), "")
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if polls < 3 {
+		t.Fatalf("expected polling, got %d requests", polls)
+	}
+	var tok token
+	if err := json.Unmarshal(session.Raw, &tok); err != nil {
+		t.Fatalf("decode raw: %v", err)
+	}
+	if tok.AccessToken != "access-1" || tok.UserID != "49927020" || tok.CountryCode != "NO" {
+		t.Fatalf("token = %+v", tok)
+	}
+	if session.ExpiresAt.IsZero() {
+		t.Fatal("expiry not set")
+	}
+}
+
+func TestCompleteReportsExpiry(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/oauth2/device_authorization", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{
+			"deviceCode": "dev-1", "verificationUriComplete": "link.tidal.com/X",
+			"expiresIn": 300, "interval": 0.001,
+		})
+	})
+	mux.HandleFunc("/v1/oauth2/token", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		writeJSON(w, map[string]any{"error": "expired_token"})
+	})
+	p := newTestProvider(t, mux)
+
+	if _, err := p.AuthRequest(); err != nil {
+		t.Fatalf("AuthRequest: %v", err)
+	}
+	if _, err := p.Complete(context.Background(), ""); err == nil {
+		t.Fatal("expected an error for an expired device code")
+	}
+}
+
+func TestCompleteWithoutAuthRequest(t *testing.T) {
+	p := newTestProvider(t, http.NotFoundHandler())
+	if _, err := p.Complete(context.Background(), ""); err == nil {
+		t.Fatal("expected an error with no sign-in in progress")
+	}
+}
+
+func TestCompleteHonoursContextCancellation(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/oauth2/device_authorization", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{
+			"deviceCode": "dev-1", "verificationUriComplete": "link.tidal.com/X",
+			"expiresIn": 300, "interval": 0.05,
+		})
+	})
+	mux.HandleFunc("/v1/oauth2/token", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		writeJSON(w, map[string]any{"error": "authorization_pending"})
+	})
+	p := newTestProvider(t, mux)
+	p.minPollInterval = 50 * time.Millisecond
+
+	if _, err := p.AuthRequest(); err != nil {
+		t.Fatalf("AuthRequest: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	if _, err := p.Complete(ctx, ""); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want DeadlineExceeded", err)
+	}
+}
+
+func TestListAndTracks(t *testing.T) {
+	mux := http.NewServeMux()
 	mux.HandleFunc("/users/49927020/playlists", func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get("Authorization"); got != "Bearer access-1" {
-			t.Fatalf("auth header = %q", got)
+		if r.Header.Get("Authorization") != "Bearer access-1" {
+			t.Fatalf("auth header = %q", r.Header.Get("Authorization"))
 		}
 		if r.URL.Query().Get("countryCode") != "NO" {
 			t.Fatalf("countryCode = %q", r.URL.Query().Get("countryCode"))
 		}
-		offset := r.URL.Query().Get("offset")
-		if offset == "0" {
+		if r.URL.Query().Get("offset") == "0" {
 			items := make([]map[string]any, pageSize)
 			for i := range items {
-				items[i] = map[string]any{"uuid": "u" + strconv.Itoa(i), "title": "P" + strconv.Itoa(i), "numberOfTracks": 1}
+				items[i] = map[string]any{"uuid": "u" + strconv.Itoa(i), "title": "P", "numberOfTracks": 1}
 			}
 			items[0] = map[string]any{
 				"uuid": "uuid-a", "title": "Road trip", "description": "for the car",
@@ -125,38 +213,21 @@ func TestCompleteListAndTracks(t *testing.T) {
 			},
 		})
 	})
-	p, _ := newTestProvider(t, mux)
+	p := newTestProvider(t, mux)
 
-	if _, err := p.AuthRequest(); err != nil {
-		t.Fatalf("AuthRequest: %v", err)
-	}
-	session, err := p.Complete(context.Background(), redirectURI+"?code=the-code&state=xyz")
-	if err != nil {
-		t.Fatalf("Complete: %v", err)
-	}
-	if session.DisplayName != "listener@example.com" || session.ExpiresAt.IsZero() {
-		t.Fatalf("unexpected session: %+v", session)
-	}
-	var tok token
-	if err := json.Unmarshal(session.Raw, &tok); err != nil {
-		t.Fatalf("decode raw: %v", err)
-	}
-	if tok.AccessToken != "access-1" || tok.UserID != "49927020" || tok.CountryCode != "NO" {
-		t.Fatalf("token = %+v", tok)
-	}
+	raw, _ := json.Marshal(token{AccessToken: "access-1", RefreshToken: "r", UserID: "49927020", CountryCode: "NO"})
+	session := musicsource.Session{Kind: musicsource.KindTIDAL, Raw: raw}
 
 	playlists, err := p.ListPlaylists(context.Background(), session)
 	if err != nil {
 		t.Fatalf("ListPlaylists: %v", err)
 	}
 	if len(playlists) != pageSize+1 {
-		t.Fatalf("got %d playlists, want %d", len(playlists), pageSize+1)
+		t.Fatalf("got %d playlists", len(playlists))
 	}
-	if playlists[0].ExternalID != "uuid-a" || playlists[0].TrackCount != 2 {
+	if playlists[0].ExternalID != "uuid-a" || playlists[0].TrackCount != 2 ||
+		playlists[0].URL != "https://tidal.com/playlist/uuid-a" || playlists[0].UpdatedAt.IsZero() {
 		t.Fatalf("first playlist = %+v", playlists[0])
-	}
-	if playlists[0].URL != "https://tidal.com/playlist/uuid-a" || playlists[0].UpdatedAt.IsZero() {
-		t.Fatalf("first playlist url/time = %+v", playlists[0])
 	}
 	if playlists[len(playlists)-1].ExternalID != "uuid-b" {
 		t.Fatalf("last playlist = %+v", playlists[len(playlists)-1])
@@ -183,29 +254,6 @@ func TestCompleteListAndTracks(t *testing.T) {
 	}
 }
 
-func TestCompleteErrors(t *testing.T) {
-	p, _ := newTestProvider(t, http.NotFoundHandler())
-
-	if _, err := p.AuthRequest(); err != nil {
-		t.Fatalf("AuthRequest: %v", err)
-	}
-	if _, err := p.Complete(context.Background(), redirectURI+"?error=access_denied"); err == nil {
-		t.Fatal("expected error for denied sign-in")
-	}
-
-	if _, err := p.AuthRequest(); err != nil {
-		t.Fatalf("AuthRequest: %v", err)
-	}
-	if _, err := p.Complete(context.Background(), redirectURI+"?state=nope"); err == nil {
-		t.Fatal("expected error for missing code")
-	}
-
-	// No AuthRequest first -> no verifier.
-	if _, err := p.Complete(context.Background(), redirectURI+"?code=x"); err == nil {
-		t.Fatal("expected error with no sign-in in progress")
-	}
-}
-
 func TestRefreshKeepsIdentity(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/oauth2/token", func(w http.ResponseWriter, r *http.Request) {
@@ -218,7 +266,7 @@ func TestRefreshKeepsIdentity(t *testing.T) {
 	mux.HandleFunc("/sessions", func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("refresh should not need the sessions endpoint")
 	})
-	p, _ := newTestProvider(t, mux)
+	p := newTestProvider(t, mux)
 
 	raw, _ := json.Marshal(token{AccessToken: "access-1", RefreshToken: "refresh-1", UserID: "49927020", CountryCode: "NO"})
 	in := musicsource.Session{Kind: musicsource.KindTIDAL, Raw: raw, DisplayName: "listener@example.com"}
@@ -257,7 +305,7 @@ func TestUnauthorizedMapsToErrNotConnected(t *testing.T) {
 	mux.HandleFunc("/users/1/playlists", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	})
-	p, _ := newTestProvider(t, mux)
+	p := newTestProvider(t, mux)
 
 	raw, _ := json.Marshal(token{AccessToken: "expired", UserID: "1", CountryCode: "US"})
 	_, err := p.ListPlaylists(context.Background(), musicsource.Session{Raw: raw})

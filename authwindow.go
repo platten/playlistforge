@@ -61,6 +61,20 @@ func runAuth(req musicsource.AuthRequest) (string, error) {
 		return "", errors.New("provider gave no sign-in URL")
 	}
 
+	// Device-flow providers approve in the user's real browser; the provider's
+	// Complete polls for the result, so there is nothing to capture here.
+	if req.OpenInBrowser {
+		app := application.Get()
+		if app == nil {
+			return "", errors.New("application is not running")
+		}
+		slog.Info("streaming sign-in: opening in the system browser", "url", req.URL)
+		if err := app.Browser.OpenURL(req.URL); err != nil {
+			return "", fmt.Errorf("open sign-in page: %w", err)
+		}
+		return "", nil
+	}
+
 	result := make(chan string, 1)
 	authCaptures.Lock()
 	if authCaptures.pending != nil {

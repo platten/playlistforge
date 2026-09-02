@@ -1,17 +1,17 @@
 // Package tidal implements musicsource.Provider against TIDAL's private API.
 //
-// Sign-in is the OAuth2 authorization-code flow with PKCE, driven through the
-// desktop webview: AuthRequest builds the login.tidal.com URL and Complete
-// exchanges the captured redirect for tokens. The client credentials are the
-// well-known ones shipped by community clients (python-tidal and others); this
-// is unofficial use of an undocumented API and can break without notice.
+// Sign-in uses the OAuth2 device authorization grant: AuthRequest asks TIDAL
+// for a device code and hands back a verification URL for the desktop layer to
+// open in the user's real browser, and Complete polls the token endpoint until
+// the user approves. The web authorize flow is reCAPTCHA-gated and unusable
+// from an embedded webview, so the device flow is the reliable path. The client
+// credentials are the well-known ones shipped by community clients (python-tidal
+// and others); this is unofficial use of an undocumented API and can break
+// without notice.
 package tidal
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,41 +28,47 @@ import (
 )
 
 const (
-	defaultLoginBase = "https://login.tidal.com"
-	defaultAuthBase  = "https://auth.tidal.com"
-	defaultAPIBase   = "https://api.tidal.com/v1"
+	defaultAuthBase = "https://auth.tidal.com"
+	defaultAPIBase  = "https://api.tidal.com/v1"
 
-	// clientID / clientSecret are the PKCE "limited input device" credentials
-	// used by python-tidal and other community clients.
-	clientID     = "6BDSRdpK9hqEBTgU"
-	clientSecret = "xeuPmY7nbpZ9IIbLAcQ93shka1VNheUAqN6IcszjTG8="
+	// clientID / clientSecret are the community device-flow ("TV") credentials
+	// used by python-tidal and others.
+	clientID     = "zU4XHVVkc2tDPo4t"
+	clientSecret = "VJKhDFqJPqvsPVNBV6ukXTJmwlvbttP7wlMlrc72se4="
 
-	redirectURI = "https://tidal.com/android/login/auth"
-	scope       = "r_usr w_usr w_sub"
+	scope           = "r_usr w_usr w_sub"
+	deviceCodeGrant = "urn:ietf:params:oauth:grant-type:device_code"
 
-	pageSize  = 50
-	userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PlaylistForge/1.0"
+	pageSize            = 50
+	userAgent           = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PlaylistForge/1.0"
+	defaultPollInterval = 2 * time.Second
 )
 
 // Provider is the TIDAL musicsource adapter. The zero value is not usable; call
 // New.
 type Provider struct {
-	http      *http.Client
-	loginBase string
-	authBase  string
-	apiBase   string
+	http            *http.Client
+	authBase        string
+	apiBase         string
+	minPollInterval time.Duration
 
-	mu              sync.Mutex
-	pendingVerifier string // set by AuthRequest, consumed by Complete
+	mu      sync.Mutex
+	pending pendingDevice // set by AuthRequest, consumed by Complete
+}
+
+type pendingDevice struct {
+	deviceCode string
+	interval   time.Duration
+	expires    time.Time
 }
 
 // New returns a Provider talking to the live TIDAL endpoints.
 func New() *Provider {
 	return &Provider{
-		http:      &http.Client{Timeout: 30 * time.Second},
-		loginBase: defaultLoginBase,
-		authBase:  defaultAuthBase,
-		apiBase:   defaultAPIBase,
+		http:            &http.Client{Timeout: 30 * time.Second},
+		authBase:        defaultAuthBase,
+		apiBase:         defaultAPIBase,
+		minPollInterval: defaultPollInterval,
 	}
 }
 
@@ -77,39 +83,135 @@ type token struct {
 	CountryCode  string `json:"countryCode"`
 }
 
-// AuthRequest builds the PKCE authorization URL and stashes the code verifier
-// for the Complete call that follows.
+type deviceAuthResponse struct {
+	DeviceCode              string  `json:"deviceCode"`
+	UserCode                string  `json:"userCode"`
+	VerificationURI         string  `json:"verificationUri"`
+	VerificationURIComplete string  `json:"verificationUriComplete"`
+	ExpiresIn               int     `json:"expiresIn"`
+	Interval                float64 `json:"interval"`
+}
+
+// AuthRequest starts the device flow and returns the URL for the user to
+// approve in their browser.
 func (p *Provider) AuthRequest() (musicsource.AuthRequest, error) {
-	verifier, err := randomVerifier()
-	if err != nil {
-		return musicsource.AuthRequest{}, err
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	form := url.Values{"client_id": {clientID}, "scope": {scope}}
+	var dev deviceAuthResponse
+	if err := p.postForm(ctx, p.authBase+"/v1/oauth2/device_authorization", form, &dev); err != nil {
+		return musicsource.AuthRequest{}, fmt.Errorf("start tidal sign-in: %w", err)
 	}
-	sum := sha256.Sum256([]byte(verifier))
-	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
+	if dev.DeviceCode == "" || dev.VerificationURIComplete == "" {
+		return musicsource.AuthRequest{}, errors.New("tidal returned an incomplete device authorization")
+	}
+
+	interval := time.Duration(dev.Interval * float64(time.Second))
+	if interval < p.minPollInterval {
+		interval = p.minPollInterval
+	}
+	expires := time.Now().Add(5 * time.Minute)
+	if dev.ExpiresIn > 0 {
+		expires = time.Now().Add(time.Duration(dev.ExpiresIn) * time.Second)
+	}
 
 	p.mu.Lock()
-	p.pendingVerifier = verifier
+	p.pending = pendingDevice{deviceCode: dev.DeviceCode, interval: interval, expires: expires}
 	p.mu.Unlock()
 
-	q := url.Values{
-		"response_type":         {"code"},
-		"redirect_uri":          {redirectURI},
-		"client_id":             {clientID},
-		"lang":                  {"en"},
-		"appMode":               {"android"},
-		"code_challenge":        {challenge},
-		"code_challenge_method": {"S256"},
-		"restrict_signup":       {"true"},
-		"scope":                 {scope},
-	}
 	return musicsource.AuthRequest{
-		URL:            p.loginBase + "/authorize?" + q.Encode(),
-		RedirectPrefix: redirectURI,
+		URL:           ensureScheme(dev.VerificationURIComplete),
+		OpenInBrowser: true,
 	}, nil
 }
 
-// oauthResponse covers both the code-exchange and refresh token responses. The
-// user object is present on the initial exchange only.
+// Complete polls the token endpoint until the pending device request is
+// approved, expires, or ctx is cancelled. The captured argument is unused.
+func (p *Provider) Complete(ctx context.Context, _ string) (musicsource.Session, error) {
+	p.mu.Lock()
+	dev := p.pending
+	p.pending = pendingDevice{}
+	p.mu.Unlock()
+	if dev.deviceCode == "" {
+		return musicsource.Session{}, errors.New("no TIDAL sign-in is in progress")
+	}
+
+	interval := dev.interval
+	if interval <= 0 {
+		interval = defaultPollInterval
+	}
+	form := url.Values{
+		"client_id":     {clientID},
+		"client_secret": {clientSecret},
+		"device_code":   {dev.deviceCode},
+		"grant_type":    {deviceCodeGrant},
+		"scope":         {scope},
+	}
+
+	for {
+		if !dev.expires.IsZero() && time.Now().After(dev.expires) {
+			return musicsource.Session{}, errors.New("TIDAL sign-in expired before it was approved")
+		}
+		tok, again, err := p.pollToken(ctx, form)
+		if err != nil {
+			return musicsource.Session{}, err
+		}
+		if !again {
+			return p.sessionFromToken(ctx, tok, "", "")
+		}
+		select {
+		case <-ctx.Done():
+			return musicsource.Session{}, ctx.Err()
+		case <-time.After(interval):
+		}
+	}
+}
+
+// pollToken makes one device-code token request. again is true while the user
+// has not acted yet ("authorization_pending" / "slow_down").
+func (p *Provider) pollToken(ctx context.Context, form url.Values) (oauthResponse, bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.authBase+"/v1/oauth2/token", strings.NewReader(form.Encode()))
+	if err != nil {
+		return oauthResponse{}, false, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err := p.http.Do(req)
+	if err != nil {
+		return oauthResponse{}, false, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		var tok oauthResponse
+		if err := json.Unmarshal(body, &tok); err != nil {
+			return oauthResponse{}, false, fmt.Errorf("decode tidal token: %w", err)
+		}
+		return tok, false, nil
+	}
+
+	var errBody struct {
+		Error string `json:"error"`
+	}
+	_ = json.Unmarshal(body, &errBody)
+	switch errBody.Error {
+	case "authorization_pending", "slow_down", "":
+		return oauthResponse{}, true, nil
+	case "expired_token":
+		return oauthResponse{}, false, errors.New("TIDAL sign-in expired before it was approved")
+	case "access_denied":
+		return oauthResponse{}, false, errors.New("the TIDAL sign-in request was declined")
+	default:
+		return oauthResponse{}, false, fmt.Errorf("tidal sign-in: %s", errBody.Error)
+	}
+}
+
+// oauthResponse covers the device-code and refresh token responses. Device-flow
+// responses do not include the user object, so identity comes from /sessions.
 type oauthResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
@@ -119,44 +221,6 @@ type oauthResponse struct {
 		CountryCode string      `json:"countryCode"`
 		Username    string      `json:"username"`
 	} `json:"user"`
-}
-
-// Complete exchanges the captured redirect URL for a session.
-func (p *Provider) Complete(ctx context.Context, captured string) (musicsource.Session, error) {
-	u, err := url.Parse(strings.TrimSpace(captured))
-	if err != nil {
-		return musicsource.Session{}, fmt.Errorf("parse redirect: %w", err)
-	}
-	if e := u.Query().Get("error"); e != "" {
-		return musicsource.Session{}, fmt.Errorf("tidal sign-in failed: %s", e)
-	}
-	code := u.Query().Get("code")
-	if code == "" {
-		return musicsource.Session{}, errors.New("tidal sign-in returned no authorization code")
-	}
-
-	p.mu.Lock()
-	verifier := p.pendingVerifier
-	p.pendingVerifier = ""
-	p.mu.Unlock()
-	if verifier == "" {
-		return musicsource.Session{}, errors.New("no TIDAL sign-in is in progress")
-	}
-
-	form := url.Values{
-		"grant_type":    {"authorization_code"},
-		"code":          {code},
-		"client_id":     {clientID},
-		"client_secret": {clientSecret},
-		"redirect_uri":  {redirectURI},
-		"scope":         {scope},
-		"code_verifier": {verifier},
-	}
-	var tok oauthResponse
-	if err := p.postForm(ctx, p.authBase+"/v1/oauth2/token", form, &tok); err != nil {
-		return musicsource.Session{}, fmt.Errorf("exchange authorization code: %w", err)
-	}
-	return p.sessionFromToken(ctx, tok, "", "")
 }
 
 // Refresh renews an access token from its refresh token. TIDAL refresh
@@ -425,12 +489,11 @@ func (p *Provider) do(req *http.Request, out any) error {
 
 // --- helpers -----------------------------------------------------------------
 
-func randomVerifier() (string, error) {
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("generate PKCE verifier: %w", err)
+func ensureScheme(u string) string {
+	if u == "" || strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
+		return u
 	}
-	return base64.RawURLEncoding.EncodeToString(buf), nil
+	return "https://" + u
 }
 
 func cleanPtr(s *string) *string {

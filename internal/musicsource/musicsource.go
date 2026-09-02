@@ -55,6 +55,11 @@ type Session struct {
 type AuthRequest struct {
 	// URL is the page to load in the auth window.
 	URL string
+	// OpenInBrowser asks the desktop layer to open URL in the user's real
+	// browser instead of an embedded webview, then call Complete with an empty
+	// string. Complete is expected to poll for the result. Used for the OAuth
+	// device flow, where an embedded webview trips the service's bot checks.
+	OpenInBrowser bool
 	// RedirectPrefix, when set, means "capture the first navigation whose URL
 	// starts with this and hand its full URL to Complete".
 	RedirectPrefix string
