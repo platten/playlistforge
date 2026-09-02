@@ -268,7 +268,9 @@ h2 {
   box-shadow: var(--shadow);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 /* Playlist brief composer. */
@@ -284,7 +286,9 @@ h2 {
 }
 .composer:focus-within {
   border-color: rgba(216, 255, 99, 0.35);
-  box-shadow: var(--shadow-hover), 0 0 40px rgba(216, 255, 99, 0.06);
+  box-shadow:
+    var(--shadow-hover),
+    0 0 40px rgba(216, 255, 99, 0.06);
 }
 label,
 legend {
@@ -531,12 +535,17 @@ select {
   flex-direction: column;
   justify-content: space-between;
   border: 1px solid var(--line);
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 .history-card:hover {
   transform: translateY(-4px);
   border-color: var(--line-strong);
-  box-shadow: var(--shadow-hover), 0 0 30px rgba(216, 255, 99, 0.08);
+  box-shadow:
+    var(--shadow-hover),
+    0 0 30px rgba(216, 255, 99, 0.08);
 }
 .history-card h2 {
   margin-top: 1.2rem;
