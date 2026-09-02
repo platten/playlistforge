@@ -12,6 +12,8 @@ export interface Track {
   version: string | null;
   remasterYear: number | null;
   qualityNote: string | null;
+  /** ISRC of the exact recording; authoritative for imported tracks, usually null for generated ones. */
+  isrc: string | null;
   rationale: string;
 }
 

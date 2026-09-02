@@ -53,7 +53,7 @@ Application data defaults to `os.UserConfigDir()/playlist-forge`. The SQLite dat
 
 ## Package responsibilities
 
-- `internal/playlist` owns dependency-free models, validation, cost estimation, and infrastructure interfaces.
+- `internal/playlist` owns dependency-free models, validation, cost estimation, same-music matching (`SameMusic`, ISRC-first then title/artist), and infrastructure interfaces.
 - `internal/app` implements use cases, background jobs, cancellation, paid-operation serialization, and revision orchestration.
 - `internal/desktop` exposes the narrow presentation contract bound into Wails and validates external URLs before opening them.
 - `internal/bootstrap` composes storage, credentials, providers, logging, and the application service.
@@ -111,7 +111,9 @@ SQLite stores four related concepts:
 
 Usage is stored as versioned JSON because provider counters can evolve independently from the relational playlist model. Times are UTC RFC 3339 values. Writes that create or activate revisions use SQL transactions.
 
-The schema is embedded with `go:embed` and is idempotent for a new database. A future incompatible change must introduce an explicit versioned migration rather than changing the meaning of an existing column.
+The schema is embedded with `go:embed` and is idempotent for a new database. Additive column changes append an `ALTER TABLE ADD COLUMN` to the `migrations` slice in `sqlite.go`, which tolerates the duplicate-column error on an already-current database; a future incompatible change must introduce an explicit versioned migration rather than changing the meaning of an existing column.
+
+The `Track` shape is the one contract mirrored in four places — `internal/playlist/model.go`, the `tracks` table in `internal/storage`, the generation JSON schema in `internal/openaiapi`, and `web/src/types.ts` — and all four move together. `Track.ISRC` is nullable: imported playlists carry the authoritative code, the model supplies it opportunistically, and generated tracks usually leave it null.
 
 ## Desktop security boundary
 

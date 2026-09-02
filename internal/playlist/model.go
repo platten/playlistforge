@@ -37,6 +37,11 @@ func (e Effort) Valid() bool {
 }
 
 // Track is a catalog-oriented recording candidate plus curation metadata.
+//
+// ISRC is the International Standard Recording Code for the exact recording. It
+// is authoritative when present: imported playlists carry it from the streaming
+// service, and it is the primary signal for same-music matching. Generated
+// tracks usually leave it nil.
 type Track struct {
 	ID           string   `json:"id"`
 	Position     int      `json:"position"`
@@ -47,6 +52,7 @@ type Track struct {
 	Version      *string  `json:"version"`
 	RemasterYear *int     `json:"remasterYear"`
 	QualityNote  *string  `json:"qualityNote"`
+	ISRC         *string  `json:"isrc"`
 	Rationale    string   `json:"rationale"`
 }
 

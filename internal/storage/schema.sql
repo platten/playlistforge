@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS tracks (
     version TEXT,
     remaster_year INTEGER,
     quality_note TEXT,
+    isrc TEXT,
     rationale TEXT NOT NULL,
     PRIMARY KEY (revision_id, id),
     UNIQUE(revision_id, position)

@@ -261,8 +261,11 @@ func trackSchema() map[string]any {
 			"version":      nullableString,
 			"remasterYear": nullableInteger,
 			"qualityNote":  nullableString,
-			"rationale":    map[string]any{"type": "string"},
+			// isrc is nullable: the model supplies it only when it is confident.
+			// Imported playlists carry the authoritative value from the service.
+			"isrc":      nullableString,
+			"rationale": map[string]any{"type": "string"},
 		},
-		"required": []string{"title", "artists", "album", "releaseYear", "version", "remasterYear", "qualityNote", "rationale"},
+		"required": []string{"title", "artists", "album", "releaseYear", "version", "remasterYear", "qualityNote", "isrc", "rationale"},
 	}
 }
