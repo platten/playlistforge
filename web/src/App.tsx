@@ -58,18 +58,28 @@ function readTheme(): Theme {
   return "dark";
 }
 
-// A struck record: the disc in accent, its centre punched to the page colour,
-// with a forge spark in the running text colour.
+// A small record with a sparkle, echoing the app icon. Kept deliberately plain
+// so it stays legible at ~34px: solid disc in the accent colour, spindle hole
+// punched to the page colour, a four-point twinkle and a speck off to one side.
 function BrandMark() {
   return (
     <span className="brand-mark" aria-hidden="true">
       <svg viewBox="0 0 32 32" role="img" aria-label="Playlist Forge">
-        <circle cx="15" cy="17" r="12" fill="currentColor" />
-        <circle cx="15" cy="17" r="3.1" fill="var(--bg)" />
-        <path
-          d="M25 2.5 26.5 7 31 8.5 26.5 10 25 14.5 23.5 10 19 8.5 23.5 7Z"
-          fill="var(--text)"
+        <circle cx="14" cy="18" r="11.5" fill="currentColor" />
+        <circle
+          cx="14"
+          cy="18"
+          r="4.6"
+          fill="none"
+          stroke="var(--bg)"
+          strokeWidth="1"
         />
+        <circle cx="14" cy="18" r="1.7" fill="var(--bg)" />
+        <path
+          d="M25.5 1.5 C26.3 5.9 26.3 5.9 30.5 6.7 C26.3 7.5 26.3 7.5 25.5 11.9 C24.7 7.5 24.7 7.5 20.5 6.7 C24.7 5.9 24.7 5.9 25.5 1.5 Z"
+          fill="currentColor"
+        />
+        <circle cx="29.4" cy="12.6" r="1" fill="currentColor" />
       </svg>
     </span>
   );

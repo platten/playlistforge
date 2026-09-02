@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg
+   
+    width="1024"
+    height="1024"
+    viewBox="0 0 1024 1024"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <defs>
+      <linearGradient id="tile" x1="0.1" y1="0" x2="0.4" y2="1">
+        <stop offset="0" stop-color="#15180f" />
+        <stop offset="0.55" stop-color="#0f100b" />
+        <stop offset="1" stop-color="#0a0b09" />
+      </linearGradient>
+      <radialGradient id="tileGlow" cx="0.3" cy="0.24" r="0.42">
+        <stop offset="0" stop-color="#dcf86a" stop-opacity="0.1" />
+        <stop offset="0.5" stop-color="#d0f24a" stop-opacity="0.025" />
+        <stop offset="1" stop-color="#d0f24a" stop-opacity="0" />
+      </radialGradient>
+      <radialGradient id="tileGlowB" cx="0.82" cy="0.88" r="0.42">
+        <stop offset="0" stop-color="#ff8b76" stop-opacity="0.09" />
+        <stop offset="1" stop-color="#ff8b76" stop-opacity="0" />
+      </radialGradient>
+
+      <radialGradient id="vinyl" cx="0.42" cy="0.36" r="0.78">
+        <stop offset="0" stop-color="#292b20" />
+        <stop offset="0.5" stop-color="#17190f" />
+        <stop offset="1" stop-color="#090a07" />
+      </radialGradient>
+      <radialGradient id="discHalo" cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0.8" stop-color="#e8ff8c" stop-opacity="0" />
+        <stop offset="0.92" stop-color="#eaffa0" stop-opacity="0.16" />
+        <stop offset="1" stop-color="#e8ff8c" stop-opacity="0" />
+      </radialGradient>
+      <radialGradient id="label" cx="0.4" cy="0.32" r="0.82">
+        <stop offset="0" stop-color="#ecff92" />
+        <stop offset="0.45" stop-color="#d3f450" />
+        <stop offset="1" stop-color="#aed427" />
+      </radialGradient>
+      <linearGradient id="sheen" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#eaff90" stop-opacity="0" />
+        <stop offset="0.4" stop-color="#eaff90" stop-opacity="0.12" />
+        <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.14" />
+        <stop offset="0.6" stop-color="#eaff90" stop-opacity="0.1" />
+        <stop offset="1" stop-color="#eaff90" stop-opacity="0" />
+      </linearGradient>
+
+      <linearGradient id="sparkA" x1="0" y1="0" x2="0.3" y2="1">
+        <stop offset="0" stop-color="#f6ffb6" />
+        <stop offset="0.5" stop-color="#dbf965" />
+        <stop offset="1" stop-color="#c2ea38" />
+      </linearGradient>
+      <linearGradient id="sparkC" x1="0" y1="0" x2="0.4" y2="1">
+        <stop offset="0" stop-color="#ffc2b2" />
+        <stop offset="1" stop-color="#ff7a61" />
+      </linearGradient>
+      <radialGradient id="sparkGlow" cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0" stop-color="#eeff9a" stop-opacity="0.6" />
+        <stop offset="0.38" stop-color="#d0f24a" stop-opacity="0.2" />
+        <stop offset="1" stop-color="#d0f24a" stop-opacity="0" />
+      </radialGradient>
+      <radialGradient id="sparkGlowC" cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0" stop-color="#ffa593" stop-opacity="0.6" />
+        <stop offset="0.4" stop-color="#ff8b76" stop-opacity="0.18" />
+        <stop offset="1" stop-color="#ff8b76" stop-opacity="0" />
+      </radialGradient>
+
+      <filter id="soft" x="-80%" y="-80%" width="260%" height="260%">
+        <feGaussianBlur stdDeviation="6" />
+      </filter>
+      <filter id="sheenBlur" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="10" />
+      </filter>
+      <filter id="softBig" x="-90%" y="-90%" width="280%" height="280%">
+        <feGaussianBlur stdDeviation="15" />
+      </filter>
+      <filter id="dropShadow" x="-40%" y="-40%" width="180%" height="180%">
+        <feDropShadow
+          dx="0"
+          dy="12"
+          stdDeviation="24"
+          flood-color="#000000"
+          flood-opacity="0.6"
+        />
+      </filter>
+
+      <clipPath id="discClip">
+        <circle cx="512" cy="524" r="300" />
+      </clipPath>
+    </defs>
+
+    <!-- Tile (full-bleed rounded square; the OS applies its own mask) -->
+    <g>
+      <rect x="0" y="0" width="1024" height="1024" rx="232" fill="url(#tile)" />
+      <rect x="0" y="0" width="1024" height="1024" rx="232" fill="url(#tileGlow)" />
+      <rect x="0" y="0" width="1024" height="1024" rx="232" fill="url(#tileGlowB)" />
+      <rect
+        x="1"
+        y="1"
+        width="1022"
+        height="1022"
+        rx="231"
+        fill="none"
+        stroke="#ffffff"
+        stroke-opacity="0.05"
+        stroke-width="2"
+      />
+    </g>
+
+    <!-- Record + sparkles, nudged up so the tile reads centred -->
+    <g transform="translate(0 -14)">
+    <!-- Record -->
+    <circle cx="512" cy="524" r="316" fill="url(#discHalo)" filter="url(#soft)" />
+    <g filter="url(#dropShadow)">
+      <circle cx="512" cy="524" r="300" fill="url(#vinyl)" />
+    </g>
+
+    <g clip-path="url(#discClip)">
+      <g fill="none" stroke="#e8f0d2">
+        <circle cx="512" cy="524" r="126" stroke-opacity="0.05" stroke-width="1.5" />
+        <circle cx="512" cy="524" r="147" stroke-opacity="0.05" stroke-width="1.5" />
+        <circle cx="512" cy="524" r="168" stroke-opacity="0.09" stroke-width="1.5" />
+        <circle cx="512" cy="524" r="190" stroke-opacity="0.05" stroke-width="1.5" />
+        <circle cx="512" cy="524" r="212" stroke-opacity="0.05" stroke-width="1.5" />
+        <circle cx="512" cy="524" r="234" stroke-opacity="0.09" stroke-width="1.5" />
+        <circle cx="512" cy="524" r="256" stroke-opacity="0.05" stroke-width="1.5" />
+        <circle cx="512" cy="524" r="278" stroke-opacity="0.06" stroke-width="1.5" />
+      </g>
+      <g filter="url(#sheenBlur)">
+        <g transform="rotate(-34 512 524)">
+          <rect x="150" y="110" width="300" height="840" fill="url(#sheen)" />
+          <rect
+            x="612"
+            y="110"
+            width="150"
+            height="840"
+            fill="url(#sheen)"
+            opacity="0.38"
+          />
+        </g>
+      </g>
+    </g>
+
+    <!-- rim -->
+    <circle
+      cx="512"
+      cy="524"
+      r="300"
+      fill="none"
+      stroke="#ffffff"
+      stroke-opacity="0.14"
+      stroke-width="2"
+    />
+    <circle
+      cx="512"
+      cy="524"
+      r="295"
+      fill="none"
+      stroke="#000000"
+      stroke-opacity="0.18"
+      stroke-width="2"
+    />
+
+    <!-- Label -->
+    <g>
+      <circle cx="512" cy="524" r="104" fill="url(#label)" />
+      <circle
+        cx="512"
+        cy="524"
+        r="74"
+        fill="none"
+        stroke="#000000"
+        stroke-opacity="0.1"
+        stroke-width="2"
+      />
+      <path
+        d="M 456 480 A 104 104 0 0 1 574 474"
+        fill="none"
+        stroke="#ffffff"
+        stroke-opacity="0.45"
+        stroke-width="5"
+        stroke-linecap="round"
+        filter="url(#soft)"
+      />
+      <circle
+        cx="512"
+        cy="524"
+        r="104"
+        fill="none"
+        stroke="#000000"
+        stroke-opacity="0.24"
+        stroke-width="2.5"
+      />
+      <circle cx="512" cy="524" r="17" fill="#0b0c0a" />
+      <circle
+        cx="512"
+        cy="524"
+        r="17"
+        fill="none"
+        stroke="#000000"
+        stroke-opacity="0.55"
+        stroke-width="3"
+      />
+      <circle cx="506" cy="518" r="4" fill="#ffffff" fill-opacity="0.28" />
+    </g>
+
+    <!-- Sparkles -->
+    <g transform="translate(766 240)">
+      <circle r="150" fill="url(#sparkGlow)" filter="url(#softBig)" />
+      <g transform="rotate(14)">
+        <path
+          d="M 0 -106 C 13 -13 13 -13 106 0 C 13 13 13 13 0 106 C -13 13 -13 13 -106 0 C -13 -13 -13 -13 0 -106 Z"
+          fill="url(#sparkA)"
+        />
+        <path
+          d="M 0 -30 C 4 -4 4 -4 30 0 C 4 4 4 4 0 30 C -4 4 -4 4 -30 0 C -4 -4 -4 -4 0 -30 Z"
+          fill="#ffffff"
+          fill-opacity="0.92"
+        />
+      </g>
+    </g>
+
+    <g transform="translate(710 424)">
+      <circle r="74" fill="url(#sparkGlowC)" filter="url(#soft)" />
+      <g transform="rotate(-10)">
+        <path
+          d="M 0 -56 C 7 -7 7 -7 56 0 C 7 7 7 7 0 56 C -7 7 -7 7 -56 0 C -7 -7 -7 -7 0 -56 Z"
+          fill="url(#sparkC)"
+        />
+      </g>
+    </g>
+
+    <g transform="translate(838 374)">
+      <circle r="58" fill="url(#sparkGlow)" filter="url(#soft)" />
+      <g transform="rotate(8)">
+        <path
+          d="M 0 -35 C 4.5 -4.5 4.5 -4.5 35 0 C 4.5 4.5 4.5 4.5 0 35 C -4.5 4.5 -4.5 4.5 -35 0 C -4.5 -4.5 -4.5 -4.5 0 -35 Z"
+          fill="url(#sparkA)"
+        />
+      </g>
+    </g>
+
+    <g transform="translate(626 198) rotate(16)">
+      <path
+        d="M 0 -25 C 3 -3 3 -3 25 0 C 3 3 3 3 0 25 C -3 3 -3 3 -25 0 C -3 -3 -3 -3 0 -25 Z"
+        fill="#dbf965"
+        fill-opacity="0.9"
+      />
+    </g>
+
+    <circle cx="812" cy="512" r="7.5" fill="#d0f24a" fill-opacity="0.92" />
+    <circle cx="588" cy="322" r="4.5" fill="#ffffff" fill-opacity="0.65" />
+    <circle cx="884" cy="270" r="5.5" fill="#d0f24a" fill-opacity="0.7" />
+    </g>
+  </svg>
