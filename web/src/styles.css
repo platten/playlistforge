@@ -741,11 +741,6 @@ select {
 .button:hover:not(:disabled) {
   transform: translateY(-1px);
 }
-.button:disabled {
-  opacity: 0.5;
-  filter: grayscale(0.4);
-  cursor: not-allowed;
-}
 .button.primary {
   background: var(--accent);
   color: var(--accent-contrast);
@@ -789,6 +784,15 @@ select {
 }
 .button.ghost:hover:not(:disabled) {
   color: var(--text);
+}
+/* One quiet, obviously-inactive state for every variant (defined last so it
+   wins over the variant colours above), rather than a washed-out tint. */
+.button:disabled {
+  cursor: not-allowed;
+  background: var(--surface-3);
+  color: var(--text-dim);
+  border-color: var(--border);
+  box-shadow: none;
 }
 
 /* ----------------------------------------------------------------------------
