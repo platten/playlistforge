@@ -1,5 +1,10 @@
 package openaiapi
 
+// Tests for API-key and model-access validation: local rejection of an empty or
+// over-long key, and error wrapping when OpenAI rejects the key or the fixed
+// model. A fake modelAPI stands in for the SDK; the SDK contract type is
+// checked separately.
+
 import (
 	"context"
 	"errors"

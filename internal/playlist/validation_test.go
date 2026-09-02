@@ -1,5 +1,12 @@
 package playlist
 
+// Tests for the dependency-free domain rules: Effort.Valid, the
+// ValidateGenerateRequest bounds (prompt length, allowed track count, effort,
+// reference limit), ValidateGenerated (exact count, empty title/artist,
+// duplicate detection, position assignment), the normalized title/artist
+// duplicate key, and EstimateUsage arithmetic including the cached-token
+// discount and the per-call web-search fee.
+
 import (
 	"errors"
 	"testing"

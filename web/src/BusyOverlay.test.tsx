@@ -1,3 +1,9 @@
+/**
+ * Tests for the delayed busy dialog: it stays hidden for fast work, appears
+ * only after the three-second threshold, moves focus to the Cancel button and
+ * traps Tab there, freezes and restores page scroll, and cancels on both
+ * Escape and a click.
+ */
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BusyOverlay } from "./BusyOverlay";

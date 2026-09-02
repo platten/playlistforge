@@ -1,5 +1,11 @@
 package credentials
 
+// Tests for key-storage precedence and lifecycle: OPENAI_API_KEY wins and is
+// reported read-only; keyring get / set / delete; the opt-in config-file
+// fallback with a 0600 file, a 0700 directory, and an atomic replace; and
+// refusal to read or write through a symlinked or non-regular config path.
+// Function fields replace the real OS keyring so no secret leaves the test.
+
 import (
 	"errors"
 	"os"

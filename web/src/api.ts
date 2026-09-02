@@ -1,6 +1,13 @@
+/**
+ * The single boundary between React and Go. Components import `api` and never
+ * touch the Wails runtime directly, so the call convention (and any future
+ * transport change) stays contained here. Long operations return a `Job`;
+ * `waitForJob` polls it to a terminal state.
+ */
 import { Call } from "@wailsio/runtime";
 import type { Config, Effort, Job, Playlist } from "./types";
 
+/** The desktop backend surface, mirroring the exported methods on Go's `desktop.API`. */
 export interface BackendAPI {
   config(): Promise<Config>;
   saveKey(key: string, allowPlaintext: boolean): Promise<Config["credential"]>;
@@ -32,6 +39,7 @@ export interface BackendAPI {
 // runtime's call convention from leaking into React components.
 const SERVICE = "playlistforge/internal/desktop.API";
 
+/** Call a bound Go method by its short name, normalizing any rejection to an Error. */
 async function invoke<T>(method: string, ...args: unknown[]): Promise<T> {
   try {
     return (await Call.ByName(`${SERVICE}.${method}`, ...args)) as T;
@@ -60,6 +68,11 @@ export const api: BackendAPI = {
   openExternalURL: (url) => invoke("OpenExternalURL", url),
 };
 
+/**
+ * A job that finished in the `failed` state. `code` carries the backend's
+ * machine-readable reason (e.g. an OpenAI billing code) so the UI can offer a
+ * targeted recovery action instead of only a message.
+ */
 export class JobError extends Error {
   constructor(
     message: string,
@@ -70,6 +83,12 @@ export class JobError extends Error {
   }
 }
 
+/**
+ * Poll a job until it reaches a terminal state, calling `onUpdate` with every
+ * snapshot (including the first) so the caller can drive a progress overlay.
+ * Resolves with the succeeded job; throws `JobError` on failure and a plain
+ * Error on cancellation.
+ */
 export async function waitForJob(
   initial: Job,
   onUpdate: (job: Job) => void,

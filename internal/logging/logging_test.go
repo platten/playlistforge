@@ -1,5 +1,10 @@
 package logging
 
+// Tests for logger construction (console, json, and rejected format/level
+// values) and for the redacting core: `sk-...` secrets must be removed from the
+// message, string fields, error fields, and reflected values, including fields
+// attached later through logger.With.
+
 import (
 	"bytes"
 	"errors"

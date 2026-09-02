@@ -1,5 +1,12 @@
 package openaiapi
 
+// Tests for the OpenAI Responses adapter: prompt and JSON-schema construction
+// for generate/refine/replace, the effort and web-search tool parameters,
+// response decoding and re-validation, usage and cost derivation, web-search
+// call counting, and classification of provider billing errors into a stable
+// BillingError. A fake responseAPI returns canned *responses.Response values;
+// the thin SDK contract type is exercised in its own test.
+
 import (
 	"context"
 	"encoding/json"

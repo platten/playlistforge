@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
 
+/**
+ * Returns `true` only once `active` has held for `delay` ms, and `false`
+ * immediately when it drops. This keeps the busy overlay from flashing for
+ * operations that finish quickly while still covering the long ones. The
+ * default 3s matches the point past which a blank wait feels unresponsive.
+ */
 export function useDelayedBusy(active: boolean, delay = 3000): boolean {
   const [visible, setVisible] = useState(false);
   useEffect(() => {

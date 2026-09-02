@@ -1,5 +1,11 @@
 package soundiiz
 
+// Tests for the Soundiiz handoff client against httptest servers: a successful
+// import, request validation (title and 1-200 tracks), non-2xx and
+// non-"success" response bodies, transport and body-read failures, and the
+// constructor's refusal to follow redirects. The share URL returned by the
+// server is re-validated before it is exposed.
+
 import (
 	"context"
 	"errors"

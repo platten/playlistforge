@@ -1,5 +1,12 @@
 package app
 
+// Tests for the Service orchestration layer: the job lifecycle (queue -> run ->
+// finish), phase updates, cancellation, the single-flight gate that serialises
+// paid work, reference-playlist loading, propagation of generator and
+// repository failures, and the secret-redacting, rune-safe public error
+// message. In-memory fakes stand in for the Generator, Repository, and Soundiiz
+// importer so no network or database is touched.
+
 import (
 	"context"
 	"errors"
@@ -9,6 +16,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"go.uber.org/zap"
 
@@ -283,6 +291,11 @@ func TestCancelAndPublicError(t *testing.T) {
 	long := publicError(errors.New(strings.Repeat("x", 700)))
 	if len(long) != 500 {
 		t.Fatalf("length=%d", len(long))
+	}
+	// A cap that lands mid-rune must back off to a valid UTF-8 boundary.
+	multibyte := publicError(errors.New(strings.Repeat("€", 700)))
+	if len(multibyte) > 500 || !utf8.ValidString(multibyte) {
+		t.Fatalf("length=%d valid=%t", len(multibyte), utf8.ValidString(multibyte))
 	}
 	message, code := publicFailure(fmt.Errorf("generate: %w", classifiedError{}))
 	if message != "Credits are exhausted." || code != "credit_balance_exhausted" {
