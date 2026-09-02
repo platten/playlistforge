@@ -39,10 +39,18 @@ jobs:
 
   desktop-linux:
     needs: quality
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
@@ -66,7 +74,7 @@ jobs:
           bash scripts/build-desktop.sh --skip-tests
       - uses: actions/upload-artifact@v7
         with:
-          name: release-desktop-linux
+          name: release-desktop-linux-${{ matrix.arch }}
           path: |
             build/bin/*.deb
             build/bin/*.rpm
@@ -92,17 +100,20 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
-      - name: Build and archive the Windows desktop application
+      - name: Build and archive the Windows desktop application (amd64 + arm64)
         shell: pwsh
         run: |
           $version = $env:GITHUB_REF_NAME.TrimStart('v')
           Set-Content -Path VERSION -Value $version -Encoding ascii
           ./scripts/build-desktop.ps1 -SkipTests
-          Compress-Archive -Path build/bin/playlist-forge.exe -DestinationPath playlist-forge-desktop-windows-amd64.zip
+          foreach ($arch in @('amd64', 'arm64')) {
+            Compress-Archive -Path "build/bin/playlist-forge-$arch.exe" `
+              -DestinationPath "playlist-forge-desktop-windows-$arch.zip"
+          }
       - uses: actions/upload-artifact@v7
         with:
           name: release-desktop-windows
-          path: playlist-forge-desktop-windows-amd64.zip
+          path: playlist-forge-desktop-windows-*.zip
 
   desktop-macos:
     needs: quality

@@ -12,9 +12,11 @@ See `ARCHITECTURE.md` for package responsibilities, security invariants, extensi
 
 Download the desktop artifact for your platform and launch **Playlist Forge**. The desktop edition opens its own window and does not listen on a local TCP port.
 
-- Windows uses WebView2 and is distributed as a standalone executable.
-- macOS is built as a universal application for Intel and Apple Silicon.
-- Linux builds produce `.deb`, `.rpm`, and AppImage packages. They use GTK3 and WebKitGTK 4.1; install your distribution's WebKitGTK runtime package if it is not already present. The deb and rpm packages declare these dependencies for their package managers.
+Every platform is built for both x86-64 and ARM64:
+
+- Windows uses WebView2 and is distributed as a standalone executable (`playlist-forge-amd64.exe`, `playlist-forge-arm64.exe`).
+- macOS is a single universal application bundle for Intel and Apple Silicon.
+- Linux builds produce `.deb`, `.rpm`, and AppImage packages for `amd64` and `arm64`. They use GTK3 and WebKitGTK 4.1; install your distribution's WebKitGTK runtime package if it is not already present. The deb and rpm packages declare these dependencies for their package managers.
 
 This is a [Wails v3](https://v3.wails.io) application. Wails v3 embeds the built
 frontend through a plain `//go:embed` directive, so desktop development is a
@@ -38,11 +40,13 @@ bash scripts/build-desktop.sh
 pwsh -File scripts/build-desktop.ps1
 ```
 
-Artifacts are written under `build/bin`. Linux builds include
-`playlist-forge_VERSION_amd64.deb`, `playlist-forge-VERSION-1.x86_64.rpm`, and
-`playlist-forge-VERSION-x86_64.AppImage`. macOS builds produce a
-`playlist-forge.app` bundle; Windows builds produce `playlist-forge.exe`. The
-product version comes from the `VERSION` file. The shared icon master is
+Artifacts are written under `build/bin`. On Linux the build targets the host
+architecture and includes `playlist-forge_VERSION_<amd64|arm64>.deb`,
+`playlist-forge-VERSION-1.<x86_64|aarch64>.rpm`, and
+`playlist-forge-VERSION-<x86_64|aarch64>.AppImage`. macOS builds produce a
+universal `playlist-forge.app` bundle; Windows builds cross-compile both
+`playlist-forge-amd64.exe` and `playlist-forge-arm64.exe`. The product version
+comes from the `VERSION` file. The shared icon master is
 `build/appicon.png`; the Linux packaging stage derives its native resources from
 it.
 
@@ -125,7 +129,7 @@ bash scripts/build-desktop.sh
 pwsh -File scripts/build-desktop.ps1
 ```
 
-Wails desktop builds are native: use Windows for the Windows executable, macOS for the universal application, and Linux for the deb, rpm, and AppImage packages. GitHub Actions runs each build on its corresponding operating system.
+Wails desktop builds are native: use Windows for the Windows executables, macOS for the universal application, and Linux for the deb, rpm, and AppImage packages. GitHub Actions runs each build on its corresponding operating system, and Linux runs on both an x86-64 and an ARM64 runner.
 
 ## Development and verification
 

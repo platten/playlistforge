@@ -1,5 +1,5 @@
 name: playlist-forge
-arch: amd64
+arch: ${PACKAGE_ARCH}
 platform: linux
 version: ${PACKAGE_VERSION}
 release: "1"
