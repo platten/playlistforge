@@ -32,7 +32,7 @@ if [[ "$(go env GOARCH)" != "amd64" ]]; then
   exit 1
 fi
 if [[ -z "$version" ]]; then
-  version="$(sed -nE 's/.*"productVersion": "([^"]+)".*/\1/p' "$project_root/wails.json" | head -n 1)"
+  version="$(tr -d '[:space:]' <"$project_root/VERSION")"
 fi
 version="${version#v}"
 if [[ ! "$version" =~ ^[0-9]+([.][0-9A-Za-z]+)*([+~-][0-9A-Za-z.-]+)?$ ]]; then

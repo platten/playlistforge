@@ -12,14 +12,22 @@ See `ARCHITECTURE.md` for package responsibilities, security invariants, extensi
 
 Download the desktop artifact for your platform and launch **Playlist Forge**. The desktop edition opens its own window and does not listen on a local TCP port.
 
-- Windows uses WebView2 and is distributed as an NSIS installer.
+- Windows uses WebView2 and is distributed as a standalone executable.
 - macOS is built as a universal application for Intel and Apple Silicon.
 - Linux builds produce `.deb`, `.rpm`, and AppImage packages. They use GTK3 and WebKitGTK 4.1; install your distribution's WebKitGTK runtime package if it is not already present. The deb and rpm packages declare these dependencies for their package managers.
 
-For desktop development, install Wails' platform prerequisites, then run:
+This is a [Wails v3](https://v3.wails.io) application. Wails v3 embeds the built
+frontend through a plain `//go:embed` directive, so desktop development is a
+frontend build followed by `go build`/`go run` — there is no `wails build` step.
+Install your platform's WebView prerequisites (on Linux, `libgtk-3-dev` and
+`libwebkit2gtk-4.1-dev`), then run:
 
 ```sh
-go run github.com/wailsapp/wails/v2/cmd/wails@v2.15.0 dev
+pnpm --dir web run build
+# Linux uses the GTK3 / WebKitGTK 4.1 stack, selected with the gtk3 build tag:
+CGO_ENABLED=1 go run -tags gtk3 .
+# macOS / Windows need no build tag:
+go run .
 ```
 
 Build a production desktop artifact for the current operating system with:
@@ -30,9 +38,13 @@ bash scripts/build-desktop.sh
 pwsh -File scripts/build-desktop.ps1
 ```
 
-Artifacts are written under `build/bin`. Windows builds require NSIS and produce `playlist-forge-amd64-installer.exe` alongside the application executable; pass `-SkipInstaller` only when an unpackaged executable is intentional. Linux builds include `playlist-forge_VERSION_amd64.deb`, `playlist-forge-VERSION-1.x86_64.rpm`, and `playlist-forge-VERSION-x86_64.AppImage`. The shared icon master is `build/appicon.png`; Wails and the Linux packaging stage derive their native resources from it.
-
-Tagged releases publish the Windows installer directly as `playlist-forge-VERSION-windows-amd64-setup.exe`. This version-specific GitHub Release URL is suitable for a WinGet `InstallerUrl` with `InstallerType: nullsoft`; NSIS supplies unattended install and uninstall through its standard `/S` switch. Use the matching entry in `SHA256SUMS.txt` as the WinGet `InstallerSha256`.
+Artifacts are written under `build/bin`. Linux builds include
+`playlist-forge_VERSION_amd64.deb`, `playlist-forge-VERSION-1.x86_64.rpm`, and
+`playlist-forge-VERSION-x86_64.AppImage`. macOS builds produce a
+`playlist-forge.app` bundle; Windows builds produce `playlist-forge.exe`. The
+product version comes from the `VERSION` file. The shared icon master is
+`build/appicon.png`; the Linux packaging stage derives its native resources from
+it.
 
 CI currently produces unsigned desktop artifacts. Configure Windows code-signing and an Apple Developer ID/notarization identity before treating downloads as a warning-free public release.
 
@@ -113,7 +125,7 @@ bash scripts/build-desktop.sh
 pwsh -File scripts/build-desktop.ps1
 ```
 
-Wails desktop builds are native: use Windows for the Windows installer, macOS for the universal application, and Linux for the deb, rpm, and AppImage packages. GitHub Actions runs each build on its corresponding operating system.
+Wails desktop builds are native: use Windows for the Windows executable, macOS for the universal application, and Linux for the deb, rpm, and AppImage packages. GitHub Actions runs each build on its corresponding operating system.
 
 ## Development and verification
 
@@ -158,7 +170,7 @@ pnpm run build
 
 CI enforces at least 95% statement coverage across the business and external-API boundary packages (`app`, `playlist`, `openaiapi`, and `soundiiz`). Frontend Wails bindings, job-polling, and slow-operation state are held to 95% for statements, branches, functions, and lines; page-level tests additionally cover rendering and XSS-safe treatment of user text. Persistence, credential fallback, cancellation, logging, and responsive rendering have dedicated tests.
 
-Pushing a tag such as `v1.2.3` runs `.github/workflows/release.yml`. After the quality gate, it builds the native Linux, Windows, and macOS desktop artifacts, submits the versioned Windows installer to VirusTotal, writes SHA-256 checksums, and creates or updates the GitHub Release. VirusTotal submission requires a repository Actions secret named `VIRUSTOTAL_API_KEY`; the release fails rather than silently skipping the scan when the secret is unavailable.
+Pushing a tag such as `v1.2.3` runs `.github/workflows/release.yml`. After the quality gate, it writes the tag version to `VERSION`, builds the native Linux, Windows, and macOS desktop artifacts, writes SHA-256 checksums, and creates or updates the GitHub Release.
 
 ## Security notes
 
