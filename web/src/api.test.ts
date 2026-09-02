@@ -1,3 +1,11 @@
+/**
+ * Tests for the typed Wails adapter and waitForJob: every method resolves to
+ * the correct fully-qualified bound name and argument list, Error and non-Error
+ * rejections are both normalized to an Error, job polling reports each interim
+ * update, a terminal "failed" job without a message falls back to a default,
+ * and a failed job's structured errorCode is carried through as a JobError.
+ * `@wailsio/runtime`'s Call is mocked.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Call } from "@wailsio/runtime";
 import { api, JobError, waitForJob } from "./api";

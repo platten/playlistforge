@@ -1,3 +1,22 @@
+/**
+ * The whole interface lives in this file. It is intentionally one module: the
+ * app is four views over a shared shell, and there is no routing, data-fetching,
+ * or state library to spread across files.
+ *
+ * Structure, top to bottom:
+ *   - constants and small pure helpers (BrandMark, icons, `coverStyle`,
+ *     `parseRoute`);
+ *   - `App`: the shell. Holds the only shared state (config, history, current
+ *     job, error banner, theme), owns a tiny History-API router, and exposes
+ *     `run()` — the single lifecycle every paid operation goes through so the
+ *     busy overlay, refresh, and error handling never drift between views;
+ *   - the four page components (`CreatePage`, `HistoryPage`, `SettingsPage`,
+ *     `PlaylistPage`) and the row-level pieces they use.
+ *
+ * All backend access is the typed adapter in `./api`; jobs are polled through
+ * `waitForJob`. Split a page into its own file once it grows independent state
+ * or is reused elsewhere.
+ */
 import {
   CSSProperties,
   FormEvent,
@@ -133,6 +152,11 @@ function parseRoute(): Route {
   return { page: "home" };
 }
 
+/**
+ * The application shell: top bar, error banner, the routed view, footer, and
+ * the busy overlay. Owns every piece of cross-view state and passes `navigate`
+ * and `run` down to the pages.
+ */
 export default function App() {
   const [route, setRoute] = useState<Route>(parseRoute);
   const [config, setConfig] = useState<Config | null>(null);
@@ -178,12 +202,17 @@ export default function App() {
     setError({ message });
   }, []);
 
+  /**
+   * The shared lifecycle for every paid operation. `operation` starts a job;
+   * `run` polls it to completion (feeding the delayed busy overlay), refreshes
+   * config and history, then invokes `after` with the finished job. Failures —
+   * including a structured `JobError` carrying a billing code — land in the
+   * error banner. Kept in one place so no page reimplements it.
+   */
   async function run(
     operation: () => Promise<Job>,
     after?: (done: Job) => Promise<void> | void,
   ) {
-    // All paid operations share this lifecycle so refresh, cancellation, error
-    // display, and the delayed busy overlay cannot drift between pages.
     setError(null);
     try {
       const initial = await operation();
@@ -315,8 +344,12 @@ export default function App() {
   );
 }
 
-// Page components stay in this file because they share the small application
-// shell. Extract one when it gains independent state or is reused elsewhere.
+/**
+ * The landing view: an editorial hero and the brief composer. Collects the
+ * prompt, track count, reasoning effort, and optional reference playlists, then
+ * hands generation to `run` and navigates to the new playlist when it lands.
+ * Disabled until a key is configured and the prompt is long enough.
+ */
 function CreatePage({
   config,
   history,
@@ -451,6 +484,11 @@ function CreatePage({
   );
 }
 
+/**
+ * The library grid. Each card links to a playlist; an empty state points back
+ * to Create. Reads `history` from the shell — it is refreshed after every
+ * operation.
+ */
 function HistoryPage({
   history,
   navigate,
@@ -499,6 +537,12 @@ function HistoryPage({
   );
 }
 
+/**
+ * Credential management. Saves or removes the OpenAI key (validation and
+ * storage happen in Go), explains the storage precedence, and shows the
+ * current status. When the key comes from OPENAI_API_KEY the form is replaced
+ * with a read-only notice. Hosts the API-key help dialog.
+ */
 function SettingsPage({
   config,
   refresh,
@@ -654,6 +698,12 @@ function SettingsPage({
   );
 }
 
+/**
+ * The playlist preview and workspace. Loads the playlist by id and shows its
+ * current revision: the tracklist (with per-track remove and replace), a
+ * full-playlist refinement form, and the Soundiiz handoff. Remove applies
+ * immediately; replace, refine, and handoff go through `run`.
+ */
 function PlaylistPage({
   id,
   run,
@@ -806,6 +856,11 @@ function PlaylistPage({
   );
 }
 
+/**
+ * One row of the tracklist: generated sleeve, title/artists/album, the
+ * curator's rationale, an optional quality note, and remove/replace controls.
+ * Replace reveals an inline guidance field.
+ */
 function TrackRow({
   track,
   onRemove,
@@ -890,6 +945,11 @@ function TrackRow({
   );
 }
 
+/**
+ * The cost/consumption summary for the current revision: track and token
+ * counts and the estimated USD spend, flagged as token-only when the
+ * web-search fee is not yet known.
+ */
 function UsageCard({ item }: { item: Playlist }) {
   const usage = item.currentRevision.usage;
   return (

@@ -1,5 +1,12 @@
 package desktop
 
+// Tests for the Wails-facing adapter: assembly of the Config contract and
+// pass-through of credential status, and the OpenExternalURL allow-list, which
+// must accept only the Soundiiz handoff origin and the exact OpenAI billing
+// page and reject everything else (wrong scheme, host, path, userinfo, query,
+// or fragment). Fakes stand in for the credential store, key validator, and the
+// URL opener.
+
 import (
 	"context"
 	"errors"

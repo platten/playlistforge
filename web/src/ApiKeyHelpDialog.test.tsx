@@ -1,3 +1,9 @@
+/**
+ * Tests for the API-key help modal: it renders nothing while closed; when open
+ * it keeps focus inside the panel, and on close it restores both the previously
+ * focused element and the page scroll lock. Escape, the close button, and a
+ * backdrop click all dismiss it.
+ */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ApiKeyHelpDialog } from "./ApiKeyHelpDialog";

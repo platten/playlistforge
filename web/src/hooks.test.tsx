@@ -1,3 +1,7 @@
+/**
+ * Tests for useDelayedBusy: no visible state for sub-threshold work, a visible
+ * state once the delay elapses, and an immediate reset the moment work stops.
+ */
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useDelayedBusy } from "./hooks";

@@ -1,5 +1,10 @@
 package storage
 
+// Tests for the SQLite repository against a real temporary-file database:
+// create / get / list, revision append with atomic activation, track deletion
+// that writes a new revision, the Soundiiz-handoff update, not-found handling,
+// and RFC 3339 time round-tripping. The embedded schema is applied on Open.
+
 import (
 	"context"
 	"errors"

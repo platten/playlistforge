@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -307,13 +308,23 @@ func (s *Service) finish(id, playlistID string, err error) {
 	delete(s.cancels, id)
 }
 
+// maxPublicErrorLen bounds the message forwarded to the frontend so a verbose
+// upstream error cannot flood the UI or a log line.
+const maxPublicErrorLen = 500
+
+// publicError is the fallback path for errors that do not implement
+// publicFailureError: redact anything that looks like an API key, then cap the
+// length on a rune boundary so the result stays valid UTF-8.
 func publicError(err error) string {
-	message := err.Error()
-	message = openAIKeyPattern.ReplaceAllString(message, "[redacted]")
-	if len(message) > 500 {
-		message = message[:500]
+	message := openAIKeyPattern.ReplaceAllString(err.Error(), "[redacted]")
+	if len(message) <= maxPublicErrorLen {
+		return message
 	}
-	return message
+	truncated := message[:maxPublicErrorLen]
+	for len(truncated) > 0 && !utf8.ValidString(truncated) {
+		truncated = truncated[:len(truncated)-1]
+	}
+	return truncated
 }
 
 type publicFailureError interface {

@@ -40,20 +40,33 @@ type Pricing struct {
 	WebSearchFeeKnown     bool    `json:"webSearchFeeKnown"`
 }
 
-// API delegates desktop calls to the transport-independent application service.
+// API is the single Go service registered with Wails. Every exported method is
+// callable from the React frontend by its fully-qualified name; each one is a
+// thin adapter over the transport-independent application service so the domain
+// never depends on the desktop runtime.
 type API struct {
+	// ctx is the process context captured at startup. Wails v3 has no
+	// per-request context on the frontend transport, so read operations reuse
+	// this one and are cancelled only when the application shuts down.
 	ctx       context.Context
 	service   *app.Service
 	keys      credentialStore
 	validator keyValidator
-	openURL   func(string)
+	// openURL hands a vetted URL to the host browser. It is injected (rather
+	// than called directly) so the package stays free of a Wails import and
+	// OpenExternalURL remains unit-testable.
+	openURL func(string)
 }
 
-// New creates the object registered in Wails' Bind list.
+// New builds the desktop API. The caller registers the result as a Wails
+// service and supplies openURL, typically wired to the host browser manager.
 func New(ctx context.Context, service *app.Service, keys credentialStore, validator keyValidator, openURL func(string)) *API {
 	return &API{ctx: ctx, service: service, keys: keys, validator: validator, openURL: openURL}
 }
 
+// Config returns the immutable presentation contract: credential status, the
+// fixed model id, the selectable track counts and reasoning efforts, and the
+// current rate card used for cost estimates.
 func (a *API) Config() Config {
 	return Config{
 		Credential:  a.keys.Status(),
@@ -70,6 +83,9 @@ func (a *API) Config() Config {
 	}
 }
 
+// SaveKey verifies the key against OpenAI (key validity and model access) and,
+// only if that succeeds, stores it. allowPlaintext permits the restricted
+// config-file fallback when the OS credential store is unavailable.
 func (a *API) SaveKey(key string, allowPlaintext bool) (credentials.Status, error) {
 	if err := a.validator.Validate(a.ctx, key); err != nil {
 		return credentials.Status{}, err
@@ -77,32 +93,48 @@ func (a *API) SaveKey(key string, allowPlaintext bool) (credentials.Status, erro
 	return a.keys.Set(key, allowPlaintext)
 }
 
+// DeleteKey removes any stored key from both the keyring and the fallback file.
 func (a *API) DeleteKey() error { return a.keys.Delete() }
 
+// ListPlaylists returns saved playlists, most recently updated first.
 func (a *API) ListPlaylists() ([]playlist.Playlist, error) { return a.service.List(a.ctx) }
 
+// GetPlaylist returns one playlist with its active revision.
 func (a *API) GetPlaylist(id string) (playlist.Playlist, error) { return a.service.Get(a.ctx, id) }
 
+// Generate validates the request and queues a new playlist job, returning the
+// queued job immediately. The frontend polls GetJob for progress.
 func (a *API) Generate(request playlist.GenerateRequest) (playlist.Job, error) {
 	return a.service.Generate(request)
 }
 
+// Refine queues a job that rewrites the whole current revision to the prompt
+// while keeping the track count. Returns the queued job.
 func (a *API) Refine(id, prompt string, effort playlist.Effort) (playlist.Job, error) {
 	return a.service.Refine(id, prompt, effort)
 }
 
+// RemoveTrack drops one track by writing a new revision, preserving history.
+// It returns the updated playlist directly (no job).
 func (a *API) RemoveTrack(playlistID, trackID string) (playlist.Playlist, error) {
 	return a.service.DeleteTrack(a.ctx, playlistID, trackID)
 }
 
+// ReplaceTrack queues a job that swaps a single track for a fresh candidate,
+// keeping its position. Returns the queued job.
 func (a *API) ReplaceTrack(playlistID, trackID, prompt string, effort playlist.Effort) (playlist.Job, error) {
 	return a.service.Replace(playlistID, trackID, prompt, effort)
 }
 
+// CreateSoundiizHandoff queues a job that asks Soundiiz for a temporary import
+// link for the current revision. Returns the queued job; the link lands on the
+// playlist once the job succeeds.
 func (a *API) CreateSoundiizHandoff(id string) (playlist.Job, error) {
 	return a.service.Handoff(id)
 }
 
+// GetJob returns the current snapshot of an in-memory job, or an error once the
+// job id is no longer known to this process.
 func (a *API) GetJob(id string) (playlist.Job, error) {
 	job, ok := a.service.GetJob(id)
 	if !ok {
@@ -111,6 +143,7 @@ func (a *API) GetJob(id string) (playlist.Job, error) {
 	return job, nil
 }
 
+// CancelJob requests cancellation of a queued or running job.
 func (a *API) CancelJob(id string) error { return a.service.CancelJob(id) }
 
 // OpenExternalURL permits the validated Soundiiz handoff origin and the exact

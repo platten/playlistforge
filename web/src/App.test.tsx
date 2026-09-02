@@ -1,3 +1,12 @@
+/**
+ * End-to-end tests for the application shell with a mocked Wails runtime:
+ * user prompt text is never interpreted as HTML, the creation page has no axe
+ * violations, a key can be saved and the environment-managed state is
+ * read-only, the API-key help dialog opens, the Soundiiz handoff view has no
+ * destination controls, and an exhausted OpenAI balance surfaces a billing
+ * recovery action. `Call.ByName` is mocked and dispatched by trailing method
+ * name to a plain fake bindings object.
+ */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "jest-axe";
