@@ -15,9 +15,17 @@ export function BusyOverlay({
   const visible = useDelayedBusy(active);
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
+    if (!visible) return;
     // The dialog has one interactive control. Moving focus there and trapping
     // Tab makes the modal behavior explicit for keyboard and screen-reader users.
-    if (visible) cancelRef.current?.focus();
+    cancelRef.current?.focus();
+    // Freeze the page behind the overlay so its scrollbar cannot appear beside
+    // the centered card while a long operation runs.
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
   }, [visible]);
   if (!visible || !job) return null;
   function keepFocus(event: KeyboardEvent) {
