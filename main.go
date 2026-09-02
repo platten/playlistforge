@@ -53,6 +53,7 @@ func run() (runErr error) {
 				_ = app.Browser.OpenURL(raw)
 			}
 		},
+		runAuth,
 	)
 
 	app := application.New(application.Options{
@@ -64,7 +65,9 @@ func run() (runErr error) {
 		Assets: application.AssetOptions{
 			Handler: application.BundledAssetFileServer(assets),
 		},
-		LogLevel: slog.LevelWarn,
+		// Captures posted by the streaming sign-in window (see authwindow.go).
+		RawMessageHandler: handleRawMessage,
+		LogLevel:          slog.LevelWarn,
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
