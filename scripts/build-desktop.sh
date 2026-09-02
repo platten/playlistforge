@@ -40,11 +40,14 @@ echo "==> Building the embedded frontend"
 )
 
 host_os="$(go env GOOS)"
+host_arch="$(go env GOARCH)"
 bin_dir="$project_root/build/bin"
 mkdir -p -- "$bin_dir"
 ldflags="-s -w -X main.version=${version}"
 
-echo "==> Building Playlist Forge desktop for $host_os"
+# Linux and Windows produce one binary per architecture (built on a matching
+# runner or, for Windows, cross-compiled); macOS produces a universal binary.
+echo "==> Building Playlist Forge desktop for $host_os/$host_arch"
 case "$host_os" in
   linux)
     (

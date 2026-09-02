@@ -45,27 +45,39 @@ finally {
 $binDir = Join-Path $projectRoot 'build/bin'
 New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 
+# WebView2 on Windows uses go-webview2, which is pure Go, so both architectures
+# cross-compile from any host with CGO disabled.
+$architectures = @('amd64', 'arm64')
+
 Push-Location $projectRoot
 try {
-    Write-Host '==> Generating the Windows resource object'
-    & go run "github.com/wailsapp/wails/v3/cmd/wails3@$wailsVersion" generate syso `
-        -arch amd64 `
-        -icon build/windows/icon.ico `
-        -manifest build/windows/wails.exe.manifest `
-        -info build/windows/info.json `
-        -out wails_windows_amd64.syso
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning 'wails3 generate syso failed; building without embedded icon/manifest.'
-    }
-
-    Write-Host '==> Building Playlist Forge desktop for Windows'
     $env:CGO_ENABLED = '0'
-    & go build -trimpath -ldflags "-s -w -H windowsgui -X main.version=$version" `
-        -o (Join-Path $binDir 'playlist-forge.exe') .
-    Assert-LastExitCode 'go build'
+    foreach ($arch in $architectures) {
+        $syso = "wails_windows_$arch.syso"
+        Write-Host "==> Generating the Windows resource object ($arch)"
+        & go run "github.com/wailsapp/wails/v3/cmd/wails3@$wailsVersion" generate syso `
+            -arch $arch `
+            -icon build/windows/icon.ico `
+            -manifest build/windows/wails.exe.manifest `
+            -info build/windows/info.json `
+            -out $syso
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "wails3 generate syso failed for $arch; building without embedded icon/manifest."
+        }
+
+        Write-Host "==> Building Playlist Forge desktop for windows/$arch"
+        $env:GOARCH = $arch
+        & go build -trimpath -ldflags "-s -w -H windowsgui -X main.version=$version" `
+            -o (Join-Path $binDir "playlist-forge-$arch.exe") .
+        Assert-LastExitCode "go build (windows/$arch)"
+
+        Remove-Item -Path (Join-Path $projectRoot $syso) -ErrorAction SilentlyContinue
+    }
 }
 finally {
     Remove-Item -Path (Join-Path $projectRoot 'wails_windows_amd64.syso') -ErrorAction SilentlyContinue
+    Remove-Item -Path (Join-Path $projectRoot 'wails_windows_arm64.syso') -ErrorAction SilentlyContinue
+    $env:GOARCH = $null
     Pop-Location
 }
 

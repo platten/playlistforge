@@ -128,15 +128,15 @@ Adding remote access or another presentation transport changes the threat model 
 
 ## Cross-platform release pipeline
 
-Native desktop builds run on a runner for each target operating system:
+Native desktop builds run on a runner for each target operating system, and every OS ships both x86-64 and ARM64:
 
 | Operating system | Desktop artifact |
 | --- | --- |
-| Windows | AMD64 executable and ZIP |
-| macOS | Universal application ZIP for Intel and Apple Silicon |
-| Linux | AMD64 deb, rpm, and AppImage packages |
+| Windows | `amd64` and `arm64` executables, each zipped (cross-compiled on one x64 runner; WebView2 is pure Go) |
+| macOS | One universal application ZIP for Intel and Apple Silicon (`lipo`) |
+| Linux | `amd64` and `arm64` deb, rpm, and AppImage packages, each built on a native runner (`ubuntu-latest` / `ubuntu-24.04-arm`) |
 
-The Linux build links WebKitGTK 4.1 through the `gtk3` build tag (Wails v3 otherwise defaults to GTK4 / WebKitGTK 6.0). `scripts/package-linux.sh` uses pinned nFPM and AppImage tooling, and packages the desktop entry, application icon, AppStream metadata, and distribution-specific GTK/WebKit dependencies.
+The Linux build links WebKitGTK 4.1 through the `gtk3` build tag (Wails v3 otherwise defaults to GTK4 / WebKitGTK 6.0) and requires the matching architecture's GTK/WebKit development libraries. `scripts/package-linux.sh` maps `GOARCH` to the deb/rpm/AppImage architecture names, and uses pinned nFPM and per-architecture AppImage tooling to package the desktop entry, application icon, AppStream metadata, and distribution-specific GTK/WebKit dependencies.
 
 Pushing a `v*` tag runs a fresh quality gate and all three native builds. The publish job downloads only desktop artifacts, writes `SHA256SUMS.txt`, and creates or updates the GitHub Release.
 

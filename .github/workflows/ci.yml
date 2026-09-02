@@ -33,8 +33,16 @@ jobs:
 
   desktop-linux:
     needs: quality
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/setup@v1
@@ -53,7 +61,7 @@ jobs:
         run: bash scripts/build-desktop.sh --skip-tests
       - uses: actions/upload-artifact@v7
         with:
-          name: playlist-forge-desktop-linux-amd64
+          name: playlist-forge-desktop-linux-${{ matrix.arch }}
           path: build/bin/
 
   desktop-windows:
@@ -72,12 +80,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
-      - name: Build the Windows desktop application
+      - name: Build the Windows desktop application (amd64 + arm64)
         shell: pwsh
         run: ./scripts/build-desktop.ps1 -SkipTests
       - uses: actions/upload-artifact@v7
         with:
-          name: playlist-forge-desktop-windows-amd64
+          name: playlist-forge-desktop-windows
           path: build/bin/
 
   desktop-macos:
