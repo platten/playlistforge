@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,12 +14,12 @@ import (
 	"playlistforge/internal/musicsource"
 )
 
-// authPollInterval is how often the sign-in window is probed for a captured
-// redirect URL or token.
-const authPollInterval = 600 * time.Millisecond
-
 // authCapturePrefix marks raw messages the sign-in window posts back to Go.
 const authCapturePrefix = "pf-auth:"
+
+// authSignInDeadline bounds how long the sign-in window stays open waiting for a
+// capture (real logins can involve email/2FA steps).
+const authSignInDeadline = 5 * time.Minute
 
 // authCaptures fans a captured value from the app-wide RawMessageHandler to the
 // runAuth call that is currently waiting. Only one sign-in runs at a time.
@@ -29,7 +31,8 @@ var authCaptures = struct {
 // handleRawMessage is registered as application.Options.RawMessageHandler. It
 // forwards a sign-in capture to a waiting runAuth and ignores everything else.
 func handleRawMessage(_ application.Window, message string, _ *application.OriginInfo) {
-	if len(message) <= len(authCapturePrefix) || message[:len(authCapturePrefix)] != authCapturePrefix {
+	value, ok := strings.CutPrefix(message, authCapturePrefix)
+	if !ok || value == "" {
 		return
 	}
 	authCaptures.Lock()
@@ -37,20 +40,22 @@ func handleRawMessage(_ application.Window, message string, _ *application.Origi
 	authCaptures.Unlock()
 	if ch != nil {
 		select {
-		case ch <- message[len(authCapturePrefix):]:
+		case ch <- value:
+			slog.Info("streaming sign-in: capture received", "bytes", len(value))
 		default:
 		}
 	}
 }
 
 // runAuth opens the streaming sign-in window described by req and blocks until
-// it captures the redirect URL (req.RedirectPrefix) or a token pulled from page
-// state (req.ExtractJS), the listener closes the window, or three minutes pass.
+// it captures the redirect URL (req.RedirectPrefix) or a value pulled from page
+// state (req.ExtractJS), the user closes the window, or the deadline passes.
 //
-// NOTE: this path exercises a real service's web login inside an embedded
-// webview and can only be validated against TIDAL/Qobuz with real credentials.
-// It compiles and is wired, but the TIDAL and Qobuz adapters (and this flow)
-// still need hands-on iteration.
+// The capture probe is injected as the window's page script (options.JS), which
+// Wails re-runs on every load: WebviewWindow.ExecJS only runs once the Wails
+// runtime has loaded, and these pages are third-party logins that never load it.
+// The probe installs its own interval so it keeps checking across the SPA route
+// changes a login flow makes without a full navigation.
 func runAuth(req musicsource.AuthRequest) (string, error) {
 	if req.URL == "" {
 		return "", errors.New("provider gave no sign-in URL")
@@ -74,6 +79,7 @@ func runAuth(req musicsource.AuthRequest) (string, error) {
 	if app == nil {
 		return "", errors.New("application is not running")
 	}
+
 	width, height := req.Width, req.Height
 	if width <= 0 {
 		width = 520
@@ -81,30 +87,15 @@ func runAuth(req musicsource.AuthRequest) (string, error) {
 	if height <= 0 {
 		height = 720
 	}
+
+	slog.Info("streaming sign-in: opening window", "url", req.URL, "redirectPrefix", req.RedirectPrefix, "extract", req.ExtractJS != "")
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "Sign in",
 		Width:  width,
 		Height: height,
 		URL:    req.URL,
+		JS:     captureProbe(req),
 	})
-
-	// After every navigation, probe the page and post any capture back to Go.
-	probe := fmt.Sprintf(`(function(){
-try{
-  var href = String(location.href);
-  if (%q && href.indexOf(%q) === 0) { post(href); return; }
-  var extract = %q;
-  if (extract) {
-    var v = (function(){ try { return eval(extract); } catch(e) { return ""; } })();
-    if (v) post(String(v));
-  }
-  function post(s){
-    var m = %q + s;
-    if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(m);
-    else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.external) window.webkit.messageHandlers.external.postMessage(m);
-  }
-}catch(e){}
-})();`, req.RedirectPrefix, req.RedirectPrefix, req.ExtractJS, authCapturePrefix)
 
 	closed := make(chan struct{}, 1)
 	window.OnWindowEvent(events.Common.WindowClosing, func(_ *application.WindowEvent) {
@@ -114,23 +105,46 @@ try{
 		}
 	})
 
-	// Poll the page rather than hook a platform-specific navigation event: the
-	// probe posts back through handleRawMessage the moment it sees the capture.
-	ticker := time.NewTicker(authPollInterval)
-	defer ticker.Stop()
-	deadline := time.After(3 * time.Minute)
-	for {
-		select {
-		case value := <-result:
-			window.Close()
-			return value, nil
-		case <-closed:
-			return "", errors.New("sign-in window was closed")
-		case <-deadline:
-			window.Close()
-			return "", errors.New("sign-in timed out")
-		case <-ticker.C:
-			window.ExecJS(probe)
-		}
+	select {
+	case value := <-result:
+		window.Close()
+		return value, nil
+	case <-closed:
+		slog.Info("streaming sign-in: window closed before a capture")
+		return "", errors.New("sign-in window was closed")
+	case <-time.After(authSignInDeadline):
+		window.Close()
+		return "", errors.New("sign-in timed out")
 	}
+}
+
+// captureProbe builds the page script that watches for the capture and posts it
+// back through the "external" script-message bridge. It guards against being
+// installed twice on the same document and polls on an interval so an SPA route
+// change (no page load) is still noticed.
+func captureProbe(req musicsource.AuthRequest) string {
+	return fmt.Sprintf(`(function(){
+  if (window.__pfAuthProbe) { return; }
+  window.__pfAuthProbe = true;
+  var PREFIX = %q, REDIRECT = %q, EXTRACT = %q;
+  function post(s){
+    try {
+      var m = PREFIX + s;
+      if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) { window.chrome.webview.postMessage(m); return; }
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.external) { window.webkit.messageHandlers.external.postMessage(m); return; }
+    } catch (e) {}
+  }
+  function check(){
+    try {
+      if (REDIRECT && String(location.href).indexOf(REDIRECT) === 0) { post(String(location.href)); return; }
+      if (EXTRACT) {
+        var v = null;
+        try { v = eval(EXTRACT); } catch (e) {}
+        if (v) { post(String(v)); }
+      }
+    } catch (e) {}
+  }
+  check();
+  window.setInterval(check, 500);
+})();`, authCapturePrefix, req.RedirectPrefix, req.ExtractJS)
 }

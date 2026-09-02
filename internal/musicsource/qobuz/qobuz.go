@@ -72,12 +72,28 @@ type token struct {
 	UserID    string `json:"userId"`
 }
 
+// authExtractJS is evaluated in the sign-in window on an interval. Once the
+// Qobuz web player has stored a session it returns {"id":…,"token":"…"} as a
+// string; it checks the known "localuser" entry first, then falls back to
+// scanning local/session storage for any {id|user_id, token} object so a
+// renamed key in a newer player build still works.
+const authExtractJS = `(function(){try{
+function pick(store){
+  try{var s=store.getItem("localuser");if(s){var o=JSON.parse(s);if(o&&o.token){return JSON.stringify({id:o.id,token:o.token});}}}catch(e){}
+  try{for(var i=0;i<store.length;i++){var k=store.key(i);var raw=store.getItem(k);
+    if(!raw||raw.indexOf("token")<0){continue;}
+    try{var v=JSON.parse(raw);if(v&&v.token&&(v.id||v.user_id)){return JSON.stringify({id:v.id||v.user_id,token:v.token});}}catch(e){}}}catch(e){}
+  return "";
+}
+return pick(window.localStorage)||pick(window.sessionStorage)||"";
+}catch(e){return "";}})()`
+
 // AuthRequest points the webview at the Qobuz web player's login page and reads
-// the stored session back out of its localStorage once the user is in.
+// the stored session back out of its storage once the user is in.
 func (p *Provider) AuthRequest() (musicsource.AuthRequest, error) {
 	return musicsource.AuthRequest{
 		URL:       p.playBase + "/login",
-		ExtractJS: `(function(){try{var s=window.localStorage.getItem("localuser");if(!s)return "";var o=JSON.parse(s);return (o&&o.token)?s:"";}catch(e){return "";}})()`,
+		ExtractJS: authExtractJS,
 		// The Qobuz web player refuses to render below ~1024px wide.
 		Width:  1200,
 		Height: 860,
