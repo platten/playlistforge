@@ -286,6 +286,9 @@ export default function App() {
   const [connections, setConnections] = useState<ConnectionStatus[]>([]);
   const [inspirationSeed, setInspirationSeed] = useState<string[]>([]);
   const [job, setJob] = useState<Job | null>(null);
+  // A sync should surface its progress bar at once; a generation waits out the
+  // delay so a quick failure doesn't flash the overlay.
+  const [jobImmediate, setJobImmediate] = useState(false);
   const [error, setError] = useState<ErrorNotice | null>(null);
   const [theme, setTheme] = useState<Theme>(readTheme);
 
@@ -332,7 +335,7 @@ export default function App() {
   // progress, so it goes through the same `run` lifecycle as a generation: the
   // busy overlay shows the progress bar, then history refreshes.
   const syncSource = (kind: string) => {
-    run(() => api.syncSource(kind));
+    run(() => api.syncSource(kind), undefined, { immediate: true });
   };
 
   // Carry a Browse selection back to the composer's reference picker.
@@ -353,8 +356,10 @@ export default function App() {
   async function run(
     operation: () => Promise<Job>,
     after?: (done: Job) => Promise<void> | void,
+    options?: { immediate?: boolean },
   ) {
     setError(null);
+    setJobImmediate(options?.immediate ?? false);
     try {
       const initial = await operation();
       const done = await waitForJob(initial, setJob);
@@ -504,7 +509,7 @@ export default function App() {
         <span>Soundiiz completes transfers on its own site.</span>
         <span>© 2026 Paul Pietkiewicz · MIT License</span>
       </footer>
-      <BusyOverlay job={job} onCancel={cancel} />
+      <BusyOverlay job={job} immediate={jobImmediate} onCancel={cancel} />
     </div>
   );
 }

@@ -5,14 +5,16 @@ import { useDelayedBusy } from "./hooks";
 export function BusyOverlay({
   job,
   onCancel,
+  immediate = false,
 }: {
   job: Job | null;
   onCancel: () => void;
+  immediate?: boolean;
 }) {
   const active = Boolean(
     job && (job.status === "queued" || job.status === "running"),
   );
-  const visible = useDelayedBusy(active);
+  const visible = useDelayedBusy(active, immediate ? 0 : 3000);
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!visible) return;
