@@ -2,8 +2,9 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "jest-axe";
 import App from "./App";
+import type { Config } from "./types";
 
-const config = {
+const config: Config = {
   credential: { configured: true, storage: "keyring" },
   model: "gpt-5.6-sol",
   trackCounts: [20, 30],
@@ -17,19 +18,39 @@ const config = {
   },
 };
 
+function installBindings() {
+  const bindings = {
+    Config: vi.fn(() => Promise.resolve(config)),
+    SaveKey: vi.fn(() => Promise.resolve(config.credential)),
+    DeleteKey: vi.fn(() => Promise.resolve()),
+    ListPlaylists: vi.fn(() => Promise.resolve([])),
+    GetPlaylist: vi.fn(() => Promise.resolve({})),
+    Generate: vi.fn(() => Promise.resolve({})),
+    Refine: vi.fn(() => Promise.resolve({})),
+    RemoveTrack: vi.fn(() => Promise.resolve({})),
+    ReplaceTrack: vi.fn(() => Promise.resolve({})),
+    CreateSoundiizHandoff: vi.fn(() => Promise.resolve({})),
+    GetJob: vi.fn(() => Promise.resolve({})),
+    CancelJob: vi.fn(() => Promise.resolve()),
+    OpenExternalURL: vi.fn(() => Promise.resolve()),
+  };
+  Object.defineProperty(window, "go", {
+    configurable: true,
+    value: { desktop: { API: bindings } },
+  });
+  return bindings;
+}
+
 describe("App", () => {
+  let bindings: ReturnType<typeof installBindings>;
+
   beforeEach(() => {
     window.history.replaceState({}, "", "/");
     vi.stubGlobal("scrollTo", vi.fn());
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const path = String(input);
-      if (path === "/api/config")
-        return new Response(JSON.stringify(config), { status: 200 });
-      if (path === "/api/playlists") return new Response("[]", { status: 200 });
-      return new Response("{}", { status: 200 });
-    });
+    bindings = installBindings();
   });
   afterEach(() => {
+    Reflect.deleteProperty(window, "go");
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -60,29 +81,17 @@ describe("App", () => {
     fireEvent.change(input, { target: { value: "sk-test" } });
     fireEvent.click(screen.getByRole("button", { name: "Save key" }));
     await waitFor(() =>
-      expect(globalThis.fetch).toHaveBeenCalledWith(
-        "/api/config/openai-key",
-        expect.objectContaining({ method: "PUT" }),
-      ),
+      expect(bindings.SaveKey).toHaveBeenCalledWith("sk-test", false),
     );
   });
   it("shows an environment-managed key without editable secret controls", async () => {
-    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
-      const path = String(input);
-      if (path === "/api/config")
-        return new Response(
-          JSON.stringify({
-            ...config,
-            credential: {
-              configured: true,
-              storage: "environment",
-              readOnly: true,
-            },
-          }),
-          { status: 200 },
-        );
-      if (path === "/api/playlists") return new Response("[]", { status: 200 });
-      return new Response("{}", { status: 200 });
+    bindings.Config.mockResolvedValueOnce({
+      ...config,
+      credential: {
+        configured: true,
+        storage: "environment",
+        readOnly: true,
+      },
     });
 
     render(<App />);
@@ -166,16 +175,7 @@ describe("App", () => {
         },
       },
     };
-    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
-      const path = String(input);
-      if (path === "/api/config")
-        return new Response(JSON.stringify(config), { status: 200 });
-      if (path === "/api/playlists")
-        return new Response(JSON.stringify([]), { status: 200 });
-      if (path === "/api/playlists/p")
-        return new Response(JSON.stringify(playlist), { status: 200 });
-      return new Response("{}", { status: 200 });
-    });
+    bindings.GetPlaylist.mockResolvedValueOnce(playlist);
 
     render(<App />);
     expect(

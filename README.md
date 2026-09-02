@@ -1,10 +1,10 @@
 # Playlist Forge
 
-Playlist Forge is a local, single-user desktop and web application that turns a natural-language brief into a researched playlist. It uses OpenAI's Responses API with `gpt-5.6-sol`, lets you review and revise every track, and creates a temporary Soundiiz handoff link for TIDAL, Qobuz, Spotify, Apple Music, or another service Soundiiz supports.
+Playlist Forge is a local, single-user desktop application that turns a natural-language brief into a researched playlist. It uses OpenAI's Responses API with `gpt-5.6-sol`, lets you review and revise every track, and creates a temporary Soundiiz handoff link for TIDAL, Qobuz, Spotify, Apple Music, or another service Soundiiz supports.
 
 Created by Paul Pietkiewicz (`773636+platten@users.noreply.github.com`) and distributed under the MIT License.
 
-The React/TypeScript frontend is embedded into the Go binary. The Wails desktop edition uses the operating system's native webview and calls Go directly; the browser edition retains its loopback HTTP adapter. Neither edition needs Node.js or a database service at runtime.
+The React/TypeScript frontend is embedded into the Go binary. The Wails desktop application uses the operating system's native webview and calls Go directly. It does not need Node.js or a database service at runtime.
 
 See `ARCHITECTURE.md` for package responsibilities, security invariants, extension guidance, and the files that must change together when an API or persisted model evolves.
 
@@ -36,28 +36,6 @@ Tagged releases publish the Windows installer directly as `playlist-forge-VERSIO
 
 CI currently produces unsigned desktop artifacts. Configure Windows code-signing and an Apple Developer ID/notarization identity before treating downloads as a warning-free public release.
 
-## Run the browser application
-
-Download the executable for your operating system and architecture, then run it:
-
-```text
-playlist-forge
-```
-
-The browser edition listens on `http://127.0.0.1:8787` by default and opens that page in your default browser. Keep this loopback default for ordinary local use.
-
-Useful options:
-
-```text
-playlist-forge --port 9000
-playlist-forge --open-browser=false
-playlist-forge --log-level debug
-playlist-forge --log-format json
-playlist-forge --config-dir /custom/private/path
-```
-
-Equivalent environment variables are `PLAYLIST_FORGE_PORT`, `PLAYLIST_FORGE_OPEN_BROWSER`, `PLAYLIST_FORGE_CONFIG_DIR`, `PLAYLIST_FORGE_LOG_LEVEL`, and `PLAYLIST_FORGE_LOG_FORMAT`. `PLAYLIST_FORGE_HOST=0.0.0.0` exists for the container boundary only; publishing that port beyond host loopback is unsupported because this single-user application has no login screen.
-
 Open **Settings**, enter an OpenAI API key, and save it. The “How do I get an API key?” popup provides the same setup instructions as the next section. Playlist Forge validates access to `gpt-5.6-sol` before saving.
 
 ## Getting an OpenAI API key
@@ -76,40 +54,6 @@ Treat an API key like a password. Do not share it, commit it to source control, 
 - Linux Secret Service
 
 If that store is unavailable, the UI can explicitly opt into a restricted `config.json` fallback under the OS-standard user config directory. The app creates a separate `playlists.db` SQLite database in that application directory. API keys are never stored in the playlist database.
-
-## Run with Docker
-
-The multi-stage `Dockerfile` builds the Vite frontend and Go executable, then copies only the executable and CA certificates into a non-root distroless runtime. Build it locally with:
-
-```sh
-docker build -t playlist-forge:local .
-```
-
-Run it with an environment-provided key and a persistent named volume:
-
-```sh
-docker run --rm --name playlist-forge \
-  -p 127.0.0.1:8787:8787 \
-  -e OPENAI_API_KEY="$OPENAI_API_KEY" \
-  -v playlist-forge-data:/config \
-  playlist-forge:local
-```
-
-PowerShell uses `$env:OPENAI_API_KEY` in place of `$OPENAI_API_KEY`. Open `http://127.0.0.1:8787` after startup. The host side of the port mapping must remain `127.0.0.1`; do not use `-p 8787:8787`, which exposes the unauthenticated app on every host interface. Pass the key only at runtime—never use it as a Docker build argument, copy it into the image, or commit it to `.env`.
-
-Docker Compose provides the same hardened defaults:
-
-```sh
-cp .env.example .env
-# Edit .env and replace the placeholder, then:
-docker compose up --build
-```
-
-The Compose service drops Linux capabilities, prevents privilege escalation, uses a read-only root filesystem, and persists `/config` in the `playlist-forge-data` volume. The image sets `PLAYLIST_FORGE_CONFIG_DIR=/config`, so `/config/config.json` and `/config/playlists.db` are the container defaults.
-
-To use the config-file credential instead of `OPENAI_API_KEY`, omit that environment variable. Start the container with the `/config` volume, open Settings, enter the key, enable the restricted config-file fallback, and save it. A pre-created file may instead be mounted at `/config/config.json`; its JSON shape is shown in `deploy/config.example.json`. Ensure the container's non-root user (UID 65532) can read the file and write its containing directory. Credential precedence is `OPENAI_API_KEY`, then the OS keyring where available, then `config.json`.
-
-Published images use `ghcr.io/<owner>/<repository>:<tag>`. CI publishes default-branch and commit tags, while a `v*` release tag publishes Linux `amd64` and `arm64` images with semantic-version and `latest` tags.
 
 ## Playlist workflow
 
@@ -161,23 +105,15 @@ Requirements:
 - Node.js 24
 - pnpm 11.19
 
-Build the frontend before the Go executable because `go:embed` packages the generated assets:
+Run the native desktop build for the current operating system:
 
 ```text
-cd web
-pnpm install --frozen-lockfile
-pnpm run build
-cd ..
-go build -trimpath -ldflags="-s -w" -o playlist-forge ./cmd/playlistforge
+bash scripts/build-desktop.sh
+# Windows PowerShell:
+pwsh -File scripts/build-desktop.ps1
 ```
 
-The browser executable remains pure Go and supports ordinary cross-compilation (`CGO_ENABLED=0`). For example:
-
-```text
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o playlist-forge-linux-arm64 ./cmd/playlistforge
-```
-
-GitHub Actions builds browser binaries for Windows, Linux, and macOS on `amd64` and `arm64`, validates the multi-platform container, and builds native Wails desktop artifacts on Windows, Linux, and macOS runners.
+Wails desktop builds are native: use Windows for the Windows installer, macOS for the universal application, and Linux for the deb, rpm, and AppImage packages. GitHub Actions runs each build on its corresponding operating system.
 
 ## Development and verification
 
@@ -190,21 +126,21 @@ pwsh -File scripts/test.ps1
 
 The race detector runs by default when CGO is available on Linux or macOS. Use `--skip-race` or `-SkipRace` only when intentionally testing on an unsupported host.
 
-Build all six release binaries and `SHA256SUMS.txt` after running the tests:
+Build the desktop application after running the tests:
 
 ```text
-bash scripts/build.sh
-pwsh -File scripts/build.ps1
+bash scripts/build-desktop.sh --skip-tests
+pwsh -File scripts/build-desktop.ps1 -SkipTests
 ```
 
-Use `--skip-tests` or `-SkipTests` when the test script already completed. Use `--output DIRECTORY` or `-OutputDirectory DIRECTORY` to select another artifact directory.
+Use `--skip-tests` or `-SkipTests` only when the corresponding test script already completed for the same source state. Desktop artifacts are written under `build/bin`.
 
 The individual commands run by the scripts are documented below for troubleshooting.
 
 Run backend checks:
 
 ```text
-gofmt -w cmd internal
+gofmt -w main.go internal
 go vet ./...
 go test -race ./...
 ```
@@ -220,25 +156,20 @@ pnpm test
 pnpm run build
 ```
 
-CI enforces at least 95% statement coverage across the business and external-API boundary packages (`app`, `playlist`, `openaiapi`, and `soundiiz`). Frontend API, job-polling, and slow-operation state are held to 95% for statements, branches, functions, and lines; page-level tests additionally cover rendering and XSS-safe treatment of user text. Persistence, HTTP routing, origin/host protections, credential fallback, cancellation, logging, and responsive rendering have dedicated tests.
+CI enforces at least 95% statement coverage across the business and external-API boundary packages (`app`, `playlist`, `openaiapi`, and `soundiiz`). Frontend Wails bindings, job-polling, and slow-operation state are held to 95% for statements, branches, functions, and lines; page-level tests additionally cover rendering and XSS-safe treatment of user text. Persistence, credential fallback, cancellation, logging, and responsive rendering have dedicated tests.
 
-Pushing a tag such as `v1.2.3` runs `.github/workflows/release.yml`. After the quality gate, it builds all six binaries, submits the versioned Windows installer to VirusTotal, publishes the multi-platform image to GitHub Container Registry, adds provenance and an OCI SBOM attestation, generates a downloadable SPDX JSON SBOM from the published image, refreshes SHA-256 checksums, and creates or updates the GitHub Release with the binaries, checksums, and SBOM. VirusTotal submission requires a repository Actions secret named `VIRUSTOTAL_API_KEY`; the release fails rather than silently skipping the scan when the secret is unavailable.
+Pushing a tag such as `v1.2.3` runs `.github/workflows/release.yml`. After the quality gate, it builds the native Linux, Windows, and macOS desktop artifacts, submits the versioned Windows installer to VirusTotal, writes SHA-256 checksums, and creates or updates the GitHub Release. VirusTotal submission requires a repository Actions secret named `VIRUSTOTAL_API_KEY`; the release fails rather than silently skipping the scan when the secret is unavailable.
 
 ## Security notes
 
 - The fixed OpenAI base URL is `https://api.openai.com/v1`; environment variables cannot redirect it.
 - The fixed Soundiiz endpoint is `https://soundiiz.com/go/import-playlist`. Redirects are not followed, and returned handoff URLs must use the exact HTTPS Soundiiz host and documented path.
-- Mutating local API calls require a custom header and same-origin checks. DNS-rebinding hosts and cross-site browser requests are rejected.
-- JSON request bodies are size-limited, unknown fields are rejected, text is rendered without raw HTML, and the embedded site uses a restrictive Content Security Policy.
+- Text is rendered without raw HTML, and the desktop API validates domain input before paid or persisted operations.
 - Console logs redact OpenAI-key-shaped values. Prompts and tracklists appear only at debug level.
-- `OPENAI_API_KEY` is read at runtime, never returned by the API, and cannot be changed or deleted through the web interface while present.
-- The container runs as UID 65532 with no Linux capabilities. Its root filesystem can be read-only; only `/config` and the temporary filesystem need write access.
+- `OPENAI_API_KEY` is read at runtime, never returned to the frontend, and cannot be changed or deleted through the desktop interface while present.
 
 ## Troubleshooting
 
-- **Port occupied:** use `--port` with another number. Native runs retain the `127.0.0.1` default.
-- **Container cannot write its database:** use the named volume from the examples or grant UID 65532 read/write access to a bind-mounted config directory.
-- **Browser did not open:** visit the URL printed in the console or use `--open-browser=false`.
 - **Credential store unavailable:** enable the config-file fallback in Settings, or configure Keychain/Credential Manager/Secret Service.
 - **OpenAI validation failed:** confirm the key is active, billing is enabled, and the project can access `gpt-5.6-sol`.
 - **Operation is taking a while:** after three seconds the app shows live job progress and a Cancel button. Higher reasoning efforts and larger playlists take longer.

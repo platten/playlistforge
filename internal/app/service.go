@@ -299,7 +299,7 @@ func (s *Service) finish(id, playlistID string, err error) {
 		job.Status = playlist.JobFailed
 		job.Phase = "Failed"
 		// Keep detailed errors in redacted logs while returning a bounded,
-		// secret-filtered message to the browser.
+		// secret-filtered message to the frontend.
 		job.Error = publicError(err)
 		s.logger.Error("background operation failed", zap.String("job_id", id), zap.Error(err))
 	}
