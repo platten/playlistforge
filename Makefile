@@ -4,7 +4,7 @@ PROJECT_DIR := .
 
 .DEFAULT_GOAL := all
 
-.PHONY: all test build desktop docker clean
+.PHONY: all test build desktop clean
 
 all: test build
 
@@ -12,21 +12,15 @@ test:
 	cd "$(PROJECT_DIR)" && bash scripts/test.sh
 
 build:
-	cd "$(PROJECT_DIR)" && bash scripts/build.sh --skip-tests
-
-desktop:
 	cd "$(PROJECT_DIR)" && bash scripts/build-desktop.sh --skip-tests
 
-docker:
-	cd "$(PROJECT_DIR)" && docker build -t playlist-forge:local .
+desktop: build
 
 clean:
 	rm -rf -- \
-		bin coverage coverage.out outputs work \
-		"$(PROJECT_DIR)/bin" \
+		coverage coverage.out work \
 		"$(PROJECT_DIR)/coverage" \
 		"$(PROJECT_DIR)/coverage.out" \
-		"$(PROJECT_DIR)/outputs" \
 		"$(PROJECT_DIR)/work" \
 		"$(PROJECT_DIR)/web/coverage" \
 		"$(PROJECT_DIR)/web/node_modules" \

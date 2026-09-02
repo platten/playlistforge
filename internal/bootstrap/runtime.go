@@ -1,5 +1,5 @@
-// Package bootstrap composes the application adapters shared by the browser
-// and desktop entrypoints.
+// Package bootstrap composes the application adapters used by the desktop
+// entrypoint.
 package bootstrap
 
 import (
@@ -23,9 +23,6 @@ import (
 // Options contains the process-specific inputs needed to start Playlist Forge.
 type Options struct {
 	Context        context.Context
-	ConfigDir      string
-	LogFormat      string
-	LogLevel       string
 	ApplicationDir string
 }
 
@@ -35,10 +32,9 @@ type Runtime struct {
 	Service   *app.Service
 	Keys      *credentials.Store
 	Validator *openaiapi.Validator
-	Logger    *zap.Logger
-	ConfigDir string
 
 	repo      *storage.Repository
+	logger    *zap.Logger
 	closeOnce sync.Once
 	closeErr  error
 }
@@ -49,19 +45,11 @@ func New(options Options) (*Runtime, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	logFormat := options.LogFormat
-	if logFormat == "" {
-		logFormat = "console"
-	}
-	logLevel := options.LogLevel
-	if logLevel == "" {
-		logLevel = "info"
-	}
-	logger, err := logging.New(logFormat, logLevel)
+	logger, err := logging.New("console", "info")
 	if err != nil {
 		return nil, fmt.Errorf("configure logging: %w", err)
 	}
-	configDir, err := ResolveConfigDir(options.ConfigDir, options.ApplicationDir)
+	configDir, err := resolveConfigDir(options.ApplicationDir)
 	if err != nil {
 		_ = logger.Sync()
 		return nil, err
@@ -81,9 +69,8 @@ func New(options Options) (*Runtime, error) {
 		Service:   service,
 		Keys:      keys,
 		Validator: openaiapi.NewValidator(),
-		Logger:    logger,
-		ConfigDir: configDir,
 		repo:      repo,
+		logger:    logger,
 	}, nil
 }
 
@@ -92,20 +79,13 @@ func (r *Runtime) Close() error {
 	r.closeOnce.Do(func() {
 		r.Service.Close()
 		r.closeErr = errors.Join(r.closeErr, r.repo.Close())
-		_ = r.Logger.Sync()
+		_ = r.logger.Sync()
 	})
 	return r.closeErr
 }
 
-// ResolveConfigDir returns an absolute override or the OS-standard directory.
-func ResolveConfigDir(override, applicationDir string) (string, error) {
-	if override != "" {
-		absolute, err := filepath.Abs(override)
-		if err != nil {
-			return "", fmt.Errorf("resolve application directory: %w", err)
-		}
-		return filepath.Clean(absolute), nil
-	}
+// resolveConfigDir returns the OS-standard application directory.
+func resolveConfigDir(applicationDir string) (string, error) {
 	root, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("find user config directory: %w", err)

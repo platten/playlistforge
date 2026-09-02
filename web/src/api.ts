@@ -1,5 +1,4 @@
 import type { Config, Effort, Job, Playlist } from "./types";
-import { createDesktopAPI } from "./desktop-api";
 
 export interface BackendAPI {
   config(): Promise<Config>;
@@ -27,103 +26,74 @@ export interface BackendAPI {
   openExternalURL(url: string): Promise<void>;
 }
 
-// Every browser mutation carries a non-simple header. Together with the
-// backend's Origin checks, this prevents another website from submitting a
-// simple cross-origin request to the unauthenticated loopback API.
-const protectionHeaders = {
-  "Content-Type": "application/json",
-  "X-Playlist-Forge": "1",
-};
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  // Keep response decoding and error normalization in one place so page
-  // components only handle domain outcomes.
-  const response = await fetch(path, init);
-  if (!response.ok) {
-    const body = (await response
-      .json()
-      .catch(() => ({ error: response.statusText }))) as { error?: string };
-    throw new Error(body.error || `Request failed (${response.status})`);
-  }
-  if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
-}
-
-const httpApi: BackendAPI = {
-  config: () => request<Config>("/api/config"),
-  saveKey: (key: string, allowPlaintext: boolean) =>
-    request<Config["credential"]>("/api/config/openai-key", {
-      method: "PUT",
-      headers: protectionHeaders,
-      body: JSON.stringify({ key, allowPlaintext }),
-    }),
-  deleteKey: () =>
-    request<void>("/api/config/openai-key", {
-      method: "DELETE",
-      headers: { "X-Playlist-Forge": "1" },
-    }),
-  playlists: () => request<Playlist[]>("/api/playlists"),
-  playlist: (id: string) =>
-    request<Playlist>(`/api/playlists/${encodeURIComponent(id)}`),
-  generate: (body: {
+type DesktopBindings = {
+  Config(): Promise<Config>;
+  SaveKey(key: string, allowPlaintext: boolean): Promise<Config["credential"]>;
+  DeleteKey(): Promise<void>;
+  ListPlaylists(): Promise<Playlist[]>;
+  GetPlaylist(id: string): Promise<Playlist>;
+  Generate(body: {
     prompt: string;
     trackCount: number;
     effort: Effort;
     referenceIds: string[];
-  }) =>
-    request<Job>("/api/playlists", {
-      method: "POST",
-      headers: protectionHeaders,
-      body: JSON.stringify(body),
-    }),
-  refine: (id: string, prompt: string, effort: Effort) =>
-    request<Job>(`/api/playlists/${encodeURIComponent(id)}/refine`, {
-      method: "POST",
-      headers: protectionHeaders,
-      body: JSON.stringify({ prompt, effort }),
-    }),
-  removeTrack: (playlistId: string, trackId: string) =>
-    request<Playlist>(
-      `/api/playlists/${encodeURIComponent(playlistId)}/tracks/${encodeURIComponent(trackId)}`,
-      {
-        method: "DELETE",
-        headers: { "X-Playlist-Forge": "1" },
-      },
-    ),
-  replaceTrack: (
+  }): Promise<Job>;
+  Refine(id: string, prompt: string, effort: Effort): Promise<Job>;
+  RemoveTrack(playlistId: string, trackId: string): Promise<Playlist>;
+  ReplaceTrack(
     playlistId: string,
     trackId: string,
     prompt: string,
     effort: Effort,
-  ) =>
-    request<Job>(
-      `/api/playlists/${encodeURIComponent(playlistId)}/tracks/${encodeURIComponent(trackId)}/replace`,
-      {
-        method: "POST",
-        headers: protectionHeaders,
-        body: JSON.stringify({ prompt, effort }),
-      },
-    ),
-  soundiiz: (id: string) =>
-    request<Job>(`/api/playlists/${encodeURIComponent(id)}/soundiiz`, {
-      method: "POST",
-      headers: protectionHeaders,
-      body: "{}",
-    }),
-  job: (id: string) => request<Job>(`/api/jobs/${encodeURIComponent(id)}`),
-  cancelJob: (id: string) =>
-    request<void>(`/api/jobs/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-      headers: { "X-Playlist-Forge": "1" },
-    }),
-  openExternalURL: async (url: string) => {
-    window.open(url, "_blank", "noopener,noreferrer");
-  },
+  ): Promise<Job>;
+  CreateSoundiizHandoff(id: string): Promise<Job>;
+  GetJob(id: string): Promise<Job>;
+  CancelJob(id: string): Promise<void>;
+  OpenExternalURL(url: string): Promise<void>;
 };
 
-// Wails injects its Go bindings before the application module runs. Browser
-// builds do not have that global and retain the loopback HTTP transport.
-export const api: BackendAPI = createDesktopAPI() || httpApi;
+function desktopBindings(): DesktopBindings | undefined {
+  return (
+    window as typeof window & {
+      go?: { desktop?: { API?: DesktopBindings } };
+    }
+  ).go?.desktop?.API;
+}
+
+async function desktopCall<T>(operation: (api: DesktopBindings) => Promise<T>) {
+  const bindings = desktopBindings();
+  if (!bindings) throw new Error("Wails desktop bindings are unavailable");
+  try {
+    return await operation(bindings);
+  } catch (reason) {
+    throw reason instanceof Error ? reason : new Error(String(reason));
+  }
+}
+
+// Wails is the only supported runtime. Keeping this adapter typed and narrow
+// prevents generated binding details from leaking into React components.
+export const api: BackendAPI = {
+  config: () => desktopCall((backend) => backend.Config()),
+  saveKey: (key, allowPlaintext) =>
+    desktopCall((backend) => backend.SaveKey(key, allowPlaintext)),
+  deleteKey: () => desktopCall((backend) => backend.DeleteKey()),
+  playlists: () => desktopCall((backend) => backend.ListPlaylists()),
+  playlist: (id) => desktopCall((backend) => backend.GetPlaylist(id)),
+  generate: (body) => desktopCall((backend) => backend.Generate(body)),
+  refine: (id, prompt, effort) =>
+    desktopCall((backend) => backend.Refine(id, prompt, effort)),
+  removeTrack: (playlistId, trackId) =>
+    desktopCall((backend) => backend.RemoveTrack(playlistId, trackId)),
+  replaceTrack: (playlistId, trackId, prompt, effort) =>
+    desktopCall((backend) =>
+      backend.ReplaceTrack(playlistId, trackId, prompt, effort),
+    ),
+  soundiiz: (id) => desktopCall((backend) => backend.CreateSoundiizHandoff(id)),
+  job: (id) => desktopCall((backend) => backend.GetJob(id)),
+  cancelJob: (id) => desktopCall((backend) => backend.CancelJob(id)),
+  openExternalURL: (url) =>
+    desktopCall((backend) => backend.OpenExternalURL(url)),
+};
 
 export async function waitForJob(
   initial: Job,

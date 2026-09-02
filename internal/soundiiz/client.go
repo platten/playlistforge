@@ -103,7 +103,7 @@ func (c *Client) Import(ctx context.Context, revision playlist.Revision) (Result
 		return Result{}, fmt.Errorf("playlist rejected by Soundiiz: %s", message)
 	}
 	// Never forward an arbitrary URL from a compromised or malformed upstream
-	// response to window.open in the browser.
+	// response to the desktop external-URL handler.
 	parsed, err := url.Parse(decoded.ShareURL)
 	if err != nil || parsed.Scheme != "https" || parsed.Host != "soundiiz.com" || parsed.User != nil || !strings.HasPrefix(parsed.Path, "/go/import-playlist/") {
 		return Result{}, errors.New("invalid share URL returned by Soundiiz")

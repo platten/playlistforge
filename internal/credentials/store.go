@@ -20,7 +20,7 @@ const openAIKeyEnvironment = "OPENAI_API_KEY"
 // ErrNotConfigured indicates that neither the keyring nor fallback file has a key.
 var ErrNotConfigured = errors.New("OpenAI API key is not configured")
 
-// Status is the non-secret credential state returned to the browser.
+// Status is the non-secret credential state returned to the desktop frontend.
 type Status struct {
 	Configured bool   `json:"configured"`
 	Storage    string `json:"storage"`
@@ -67,8 +67,8 @@ func (s *Store) Status() Status {
 }
 
 // Get returns the environment value first, followed by the keyring and config
-// file. Environment precedence makes container deployment deterministic without
-// copying a secret into the image or the application data volume.
+// file. Environment precedence supports externally managed credentials without
+// copying a secret into the application configuration.
 func (s *Store) Get() (string, error) {
 	if value := strings.TrimSpace(s.envGet(openAIKeyEnvironment)); value != "" {
 		return value, nil
@@ -87,7 +87,7 @@ func (s *Store) Get() (string, error) {
 // caller has explicitly opted in and the keyring write fails.
 func (s *Store) Set(value string, allowPlaintext bool) (Status, error) {
 	if strings.TrimSpace(s.envGet(openAIKeyEnvironment)) != "" {
-		return Status{}, fmt.Errorf("API key is managed by %s and cannot be changed in the web interface", openAIKeyEnvironment)
+		return Status{}, fmt.Errorf("API key is managed by %s and cannot be changed in the desktop interface", openAIKeyEnvironment)
 	}
 	value = strings.TrimSpace(value)
 	if value == "" || len(value) > 512 {
@@ -109,7 +109,7 @@ func (s *Store) Set(value string, allowPlaintext bool) (Status, error) {
 // stale credential behind.
 func (s *Store) Delete() error {
 	if strings.TrimSpace(s.envGet(openAIKeyEnvironment)) != "" {
-		return fmt.Errorf("API key is managed by %s and cannot be removed in the web interface", openAIKeyEnvironment)
+		return fmt.Errorf("API key is managed by %s and cannot be removed in the desktop interface", openAIKeyEnvironment)
 	}
 	errKeyring := s.keyDelete(service, account)
 	errDisk := os.Remove(s.configPath)
