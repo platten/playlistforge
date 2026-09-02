@@ -95,15 +95,20 @@ jobs:
       - name: Build and archive the Windows desktop application
         shell: pwsh
         run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart('v')
           $config = Get-Content wails.json -Raw | ConvertFrom-Json
-          $config.info.productVersion = $env:GITHUB_REF_NAME.TrimStart('v')
+          $config.info.productVersion = $version
           $config | ConvertTo-Json -Depth 10 | Set-Content wails.json -Encoding utf8
           ./scripts/build-desktop.ps1 -SkipTests
-          Compress-Archive -Path build/bin/* -DestinationPath playlist-forge-desktop-windows-amd64.zip
+          $installer = Get-Item build/bin/playlist-forge-amd64-installer.exe
+          Copy-Item $installer "playlist-forge-$version-windows-amd64-setup.exe"
+          Compress-Archive -Path build/bin/playlist-forge.exe -DestinationPath playlist-forge-desktop-windows-amd64.zip
       - uses: actions/upload-artifact@v7
         with:
           name: release-desktop-windows
-          path: playlist-forge-desktop-windows-amd64.zip
+          path: |
+            playlist-forge-desktop-windows-amd64.zip
+            playlist-forge-*-windows-amd64-setup.exe
 
   desktop-macos:
     needs: quality

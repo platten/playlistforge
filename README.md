@@ -30,7 +30,9 @@ bash scripts/build-desktop.sh
 pwsh -File scripts/build-desktop.ps1
 ```
 
-Artifacts are written under `build/bin`. On Linux this includes `playlist-forge_VERSION_amd64.deb`, `playlist-forge-VERSION-1.x86_64.rpm`, and `playlist-forge-VERSION-x86_64.AppImage`. The shared icon master is `build/appicon.png`; Wails and the Linux packaging stage derive their native resources from it.
+Artifacts are written under `build/bin`. Windows builds require NSIS and produce `playlist-forge-amd64-installer.exe` alongside the application executable; pass `-SkipInstaller` only when an unpackaged executable is intentional. Linux builds include `playlist-forge_VERSION_amd64.deb`, `playlist-forge-VERSION-1.x86_64.rpm`, and `playlist-forge-VERSION-x86_64.AppImage`. The shared icon master is `build/appicon.png`; Wails and the Linux packaging stage derive their native resources from it.
+
+Tagged releases publish the Windows installer directly as `playlist-forge-VERSION-windows-amd64-setup.exe`. This version-specific GitHub Release URL is suitable for a WinGet `InstallerUrl` with `InstallerType: nullsoft`; NSIS supplies unattended install and uninstall through its standard `/S` switch. Use the matching entry in `SHA256SUMS.txt` as the WinGet `InstallerSha256`.
 
 CI currently produces unsigned desktop artifacts. Configure Windows code-signing and an Apple Developer ID/notarization identity before treating downloads as a warning-free public release.
 
