@@ -178,6 +178,12 @@ func TestHelpers(t *testing.T) {
 	if !strings.Contains(prompt, "exactly 30") || strings.Contains(prompt, "REFERENCE") {
 		t.Fatalf("prompt = %s", prompt)
 	}
+	curationPrompt := strings.ToLower(instructions + "\n" + prompt)
+	for _, unwanted := range []string{"remaster", "bitrate", "lossless", "high-resolution", "fidelity"} {
+		if strings.Contains(curationPrompt, unwanted) {
+			t.Fatalf("curation prompt contains quality preference %q: %s", unwanted, curationPrompt)
+		}
+	}
 	if schema := playlistSchema(20); schema["type"] != "object" {
 		t.Fatalf("schema = %#v", schema)
 	}
