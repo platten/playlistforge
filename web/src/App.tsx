@@ -19,8 +19,10 @@
  * or is reused elsewhere.
  */
 import {
+  Component,
   CSSProperties,
   FormEvent,
+  ReactNode,
   useCallback,
   useEffect,
   useState,
@@ -100,6 +102,56 @@ function SourceBadges({ item }: { item: Playlist }) {
       ))}
     </span>
   );
+}
+
+// The tracklist of a not-yet-hydrated import can be absent; never dereference it
+// directly.
+const trackList = (item: Playlist): Track[] =>
+  item.currentRevision?.tracks ?? [];
+
+/**
+ * Stops a render error in one view from blanking the whole app. React needs a
+ * class component for this; it is the only one in the file.
+ */
+class ErrorBoundary extends Component<
+  { children: ReactNode },
+  { message: string | null }
+> {
+  state = { message: null as string | null };
+
+  static getDerivedStateFromError(error: unknown) {
+    return {
+      message: error instanceof Error ? error.message : "Something went wrong",
+    };
+  }
+
+  render() {
+    if (this.state.message === null) return this.props.children;
+    return (
+      <section className="page">
+        <p className="eyebrow">Something broke</p>
+        <h1>This view failed to render</h1>
+        <p className="lede compact">{this.state.message}</p>
+        <div className="button-row">
+          <button
+            className="button primary"
+            onClick={() => window.location.reload()}
+          >
+            Reload
+          </button>
+          <button
+            className="button secondary"
+            onClick={() => {
+              window.history.pushState({}, "", "/");
+              window.location.reload();
+            }}
+          >
+            Back to Create
+          </button>
+        </div>
+      </section>
+    );
+  }
 }
 
 type ErrorNotice = { message: string; code?: string };
@@ -414,48 +466,50 @@ export default function App() {
         </div>
       )}
       <main id="main">
-        {route.page === "home" && (
-          <CreatePage
-            config={config}
-            history={history}
-            inspirationSeed={inspirationSeed}
-            navigate={navigate}
-            run={run}
-          />
-        )}
-        {route.page === "browse" && (
-          <BrowsePage
-            history={history}
-            connections={connections}
-            syncSource={syncSource}
-            onUseAsInspiration={applyInspiration}
-            navigate={navigate}
-          />
-        )}
-        {route.page === "history" && (
-          <HistoryPage
-            history={history}
-            connections={connections}
-            syncSource={syncSource}
-            navigate={navigate}
-          />
-        )}
-        {route.page === "settings" && (
-          <SettingsPage
-            config={config}
-            connections={connections}
-            refresh={refresh}
-            setError={reportError}
-          />
-        )}
-        {route.page === "playlist" && (
-          <PlaylistPage
-            id={route.id}
-            run={run}
-            navigate={navigate}
-            setError={reportError}
-          />
-        )}
+        <ErrorBoundary key={route.page}>
+          {route.page === "home" && (
+            <CreatePage
+              config={config}
+              history={history}
+              inspirationSeed={inspirationSeed}
+              navigate={navigate}
+              run={run}
+            />
+          )}
+          {route.page === "browse" && (
+            <BrowsePage
+              history={history}
+              connections={connections}
+              syncSource={syncSource}
+              onUseAsInspiration={applyInspiration}
+              navigate={navigate}
+            />
+          )}
+          {route.page === "history" && (
+            <HistoryPage
+              history={history}
+              connections={connections}
+              syncSource={syncSource}
+              navigate={navigate}
+            />
+          )}
+          {route.page === "settings" && (
+            <SettingsPage
+              config={config}
+              connections={connections}
+              refresh={refresh}
+              setError={reportError}
+            />
+          )}
+          {route.page === "playlist" && (
+            <PlaylistPage
+              id={route.id}
+              run={run}
+              navigate={navigate}
+              setError={reportError}
+            />
+          )}
+        </ErrorBoundary>
       </main>
       <footer>
         <span>
@@ -694,7 +748,7 @@ function HistoryPage({
                     onClick={() => navigate(`/playlists/${item.id}`)}
                   >
                     <span className="history-count">
-                      {item.currentRevision.tracks.length} tracks
+                      {trackList(item).length} tracks
                     </span>
                     <h3>{item.currentRevision.title}</h3>
                     <p>{item.currentRevision.description}</p>
@@ -829,8 +883,7 @@ function BrowsePage({
                               {item.currentRevision.title}
                             </span>
                             <span className="browse-row-meta">
-                              {item.currentRevision.tracks.length} tracks ·
-                              updated{" "}
+                              {trackList(item).length} tracks · updated{" "}
                               {new Date(item.updatedAt).toLocaleDateString()}
                             </span>
                           </span>
@@ -1225,11 +1278,11 @@ function PlaylistPage({
           <p className="lede compact">{revision.description}</p>
           <SourceBadges item={item} />
         </div>
-        <UsageCard item={item} />
+        {!readOnly && <UsageCard item={item} />}
       </div>
       <div className="playlist-workspace">
         <div className="tracklist card" aria-label="Playlist tracks">
-          {revision.tracks.map((track) => (
+          {trackList(item).map((track) => (
             <TrackRow
               key={track.id}
               track={track}
@@ -1462,7 +1515,7 @@ function UsageCard({ item }: { item: Playlist }) {
   const usage = item.currentRevision.usage;
   return (
     <div className="usage-card card">
-      <span>{item.currentRevision.tracks.length} tracks</span>
+      <span>{trackList(item).length} tracks</span>
       <span>{(usage.totalTokens || 0).toLocaleString()} tokens</span>
       <strong>≈ ${usage.estimatedCostUsd.toFixed(4)}</strong>
       <small>

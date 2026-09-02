@@ -356,6 +356,11 @@ func (r *Repository) getRevision(ctx context.Context, id string) (playlist.Revis
 	if err := rows.Close(); err != nil {
 		return playlist.Revision{}, fmt.Errorf("close tracks: %w", err)
 	}
+	if revision.Tracks == nil {
+		// A not-yet-hydrated import has no track rows; keep the JSON contract a
+		// list so the frontend never sees a null tracklist.
+		revision.Tracks = []playlist.Track{}
+	}
 	return revision, nil
 }
 

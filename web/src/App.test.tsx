@@ -304,6 +304,39 @@ describe("App", () => {
     expect(screen.getByText("TIDAL favourites")).toBeInTheDocument();
   });
 
+  it("renders Browse for an un-hydrated import whose tracklist is absent", async () => {
+    const shellRevision = revision("Not hydrated yet");
+    // A freshly imported shell has a revision but no tracks array yet.
+    delete (shellRevision as { tracks?: unknown }).tracks;
+    bindings.ListPlaylists.mockResolvedValue([
+      {
+        id: "shell",
+        createdAt: "2026-09-01T00:00:00Z",
+        updatedAt: "2026-09-01T00:00:00Z",
+        revisionCount: 1,
+        origin: "imported",
+        sources: [
+          {
+            kind: "tidal",
+            url: "https://tidal.com/playlist/shell",
+            syncedAt: "2026-09-01T00:00:00Z",
+            externalId: "shell",
+          },
+        ],
+        currentRevision: shellRevision,
+      },
+    ]);
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Browse" }));
+    expect(await screen.findByText("Not hydrated yet")).toBeInTheDocument();
+    expect(screen.getByText(/0 tracks/)).toBeInTheDocument();
+    // The whole view did not blank out.
+    expect(
+      screen.getByRole("button", { name: /use as inspiration/i }),
+    ).toBeInTheDocument();
+  });
+
   it("connects and disconnects a streaming service from settings", async () => {
     bindings.Connections.mockResolvedValueOnce([
       { kind: "tidal", available: true, connected: false, displayName: "" },

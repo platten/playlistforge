@@ -117,3 +117,27 @@ func TestRepositoryErrorsAndDefaults(t *testing.T) {
 		t.Fatal("expected time parse error")
 	}
 }
+
+func TestGetImportedShellHasNonNilTracklist(t *testing.T) {
+	ctx := context.Background()
+	repo := openTestRepo(t)
+
+	id, err := repo.CreateImported(ctx, playlist.SourceInput{
+		Kind: "tidal", ExternalID: "ext-1", ExternalURL: "https://tidal.com/playlist/ext-1",
+		Title: "Not hydrated yet", Description: "shell",
+	}, time.Now())
+	if err != nil {
+		t.Fatalf("CreateImported: %v", err)
+	}
+
+	item, err := repo.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if item.CurrentRevision.Tracks == nil {
+		t.Fatal("an un-hydrated import must still serialise tracks as a list, not null")
+	}
+	if len(item.CurrentRevision.Tracks) != 0 {
+		t.Fatalf("expected no tracks, got %d", len(item.CurrentRevision.Tracks))
+	}
+}
