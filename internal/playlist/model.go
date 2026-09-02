@@ -90,15 +90,59 @@ type Revision struct {
 	CreatedAt   time.Time `json:"createdAt"`
 }
 
+// Origin distinguishes a playlist born from a brief from one mirrored from a
+// streaming service.
+const (
+	OriginGenerated = "generated"
+	OriginImported  = "imported"
+)
+
+// PlaylistSource is one place a playlist also lives, shown as a badge in the UI.
+type PlaylistSource struct {
+	Kind       string    `json:"kind"`
+	URL        string    `json:"url"`
+	SyncedAt   time.Time `json:"syncedAt"`
+	ExternalID string    `json:"-"` // the service's own id; needed for lazy hydration
+}
+
+// SourceInput carries the streaming-service facts needed to create or refresh a
+// source link. The application service fills it from a musicsource.RemotePlaylist
+// so internal/storage stays free of provider types.
+type SourceInput struct {
+	Kind            string
+	ExternalID      string
+	ExternalURL     string
+	ETag            string
+	RemoteUpdatedAt time.Time
+	Title           string
+	Description     string
+}
+
+// SourceLink is a stored playlist_sources row, used by sync to diff local state
+// against the service.
+type SourceLink struct {
+	PlaylistID      string
+	Kind            string
+	ExternalID      string
+	ETag            string
+	RemoteUpdatedAt time.Time
+	TracksFetched   bool
+}
+
 // Playlist points to its active revision and latest Soundiiz handoff.
 type Playlist struct {
-	ID              string     `json:"id"`
-	CreatedAt       time.Time  `json:"createdAt"`
-	UpdatedAt       time.Time  `json:"updatedAt"`
-	CurrentRevision Revision   `json:"currentRevision"`
-	RevisionCount   int        `json:"revisionCount"`
-	SoundiizURL     *string    `json:"soundiizUrl,omitempty"`
-	SoundiizExpires *time.Time `json:"soundiizExpiresAt,omitempty"`
+	ID              string           `json:"id"`
+	CreatedAt       time.Time        `json:"createdAt"`
+	UpdatedAt       time.Time        `json:"updatedAt"`
+	CurrentRevision Revision         `json:"currentRevision"`
+	RevisionCount   int              `json:"revisionCount"`
+	Origin          string           `json:"origin"`
+	Sources         []PlaylistSource `json:"sources,omitempty"`
+	SoundiizURL     *string          `json:"soundiizUrl,omitempty"`
+	SoundiizExpires *time.Time       `json:"soundiizExpiresAt,omitempty"`
+	// TracksStale is true for an imported playlist whose tracklist has not been
+	// hydrated yet. Not sent to the frontend.
+	TracksStale bool `json:"-"`
 }
 
 // GenerateRequest contains validated user input for a new playlist job.

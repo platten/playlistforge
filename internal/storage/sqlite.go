@@ -25,6 +25,7 @@ var schema string
 // is expected and ignored. SQLite has no ADD COLUMN IF NOT EXISTS.
 var migrations = []string{
 	`ALTER TABLE tracks ADD COLUMN isrc TEXT`,
+	`ALTER TABLE playlists ADD COLUMN origin TEXT NOT NULL DEFAULT 'generated'`,
 }
 
 // ErrNotFound is returned when a playlist identifier does not exist.
@@ -149,8 +150,22 @@ func insertRevision(ctx context.Context, tx *sql.Tx, revision playlist.Revision,
 	if err != nil {
 		return fmt.Errorf("insert revision: %w", err)
 	}
-	for i := range revision.Tracks {
-		track := revision.Tracks[i]
+	if err := insertTracks(ctx, tx, revision.ID, revision.Tracks); err != nil {
+		return err
+	}
+	for _, reference := range references {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO revision_references(revision_id,reference_playlist_id) VALUES(?,?)`, revision.ID, reference); err != nil {
+			return fmt.Errorf("insert playlist reference: %w", err)
+		}
+	}
+	return nil
+}
+
+// insertTracks writes tracks into revisionID at sequential positions, assigning
+// a new id to any track that lacks one.
+func insertTracks(ctx context.Context, tx *sql.Tx, revisionID string, tracks []playlist.Track) error {
+	for i := range tracks {
+		track := tracks[i]
 		if track.ID == "" {
 			track.ID = uuid.NewString()
 		}
@@ -160,15 +175,10 @@ func insertRevision(ctx context.Context, tx *sql.Tx, revision playlist.Revision,
 			return fmt.Errorf("encode track artists: %w", err)
 		}
 		_, err = tx.ExecContext(ctx, `INSERT INTO tracks(id,revision_id,position,title,artists_json,album,release_year,version,remaster_year,quality_note,isrc,rationale) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-			track.ID, revision.ID, track.Position, track.Title, string(artists), track.Album, track.ReleaseYear,
+			track.ID, revisionID, track.Position, track.Title, string(artists), track.Album, track.ReleaseYear,
 			track.Version, track.RemasterYear, track.QualityNote, track.ISRC, track.Rationale)
 		if err != nil {
 			return fmt.Errorf("insert track %d: %w", i+1, err)
-		}
-	}
-	for _, reference := range references {
-		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO revision_references(revision_id,reference_playlist_id) VALUES(?,?)`, revision.ID, reference); err != nil {
-			return fmt.Errorf("insert playlist reference: %w", err)
 		}
 	}
 	return nil
@@ -211,8 +221,8 @@ func (r *Repository) Get(ctx context.Context, id string) (playlist.Playlist, err
 	var item playlist.Playlist
 	var created, updated, revisionID string
 	var soundURL, soundExpires sql.NullString
-	err := r.db.QueryRowContext(ctx, `SELECT id,created_at,updated_at,current_revision_id,revision_count,soundiiz_url,soundiiz_expires_at FROM playlists WHERE id=?`, id).
-		Scan(&item.ID, &created, &updated, &revisionID, &item.RevisionCount, &soundURL, &soundExpires)
+	err := r.db.QueryRowContext(ctx, `SELECT id,created_at,updated_at,current_revision_id,revision_count,soundiiz_url,soundiiz_expires_at,origin FROM playlists WHERE id=?`, id).
+		Scan(&item.ID, &created, &updated, &revisionID, &item.RevisionCount, &soundURL, &soundExpires, &item.Origin)
 	if errors.Is(err, sql.ErrNoRows) {
 		return playlist.Playlist{}, ErrNotFound
 	}
@@ -241,7 +251,47 @@ func (r *Repository) Get(ctx context.Context, id string) (playlist.Playlist, err
 		}
 		item.SoundiizExpires = &expires
 	}
+	if err := r.loadSources(ctx, &item); err != nil {
+		return playlist.Playlist{}, err
+	}
 	return item, nil
+}
+
+// loadSources attaches any streaming-service links to item and, for an imported
+// playlist, sets TracksStale from whether the tracklist has been hydrated.
+func (r *Repository) loadSources(ctx context.Context, item *playlist.Playlist) error {
+	rows, err := r.db.QueryContext(ctx, `SELECT kind,external_id,external_url,synced_at,tracks_fetched FROM playlist_sources WHERE playlist_id=? ORDER BY kind`, item.ID)
+	if err != nil {
+		return fmt.Errorf("load playlist sources: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	anyStale := false
+	linked := false
+	for rows.Next() {
+		var kind, externalID, syncedAt string
+		var url sql.NullString
+		var fetched int
+		if err := rows.Scan(&kind, &externalID, &url, &syncedAt, &fetched); err != nil {
+			return fmt.Errorf("scan playlist source: %w", err)
+		}
+		linked = true
+		synced, err := parseTime(syncedAt)
+		if err != nil {
+			return err
+		}
+		item.Sources = append(item.Sources, playlist.PlaylistSource{Kind: kind, URL: url.String, SyncedAt: synced, ExternalID: externalID})
+		if fetched == 0 {
+			anyStale = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate playlist sources: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close playlist sources: %w", err)
+	}
+	item.TracksStale = item.Origin == playlist.OriginImported && linked && anyStale
+	return nil
 }
 
 func (r *Repository) getRevision(ctx context.Context, id string) (playlist.Revision, error) {

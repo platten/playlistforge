@@ -80,8 +80,35 @@ func (s *Service) Close() {
 // List returns saved playlists in repository-defined order.
 func (s *Service) List(ctx context.Context) ([]playlist.Playlist, error) { return s.repo.List(ctx) }
 
-// Get returns one playlist with its active revision.
+// Get returns one playlist with its active revision. If the playlist is an
+// imported one whose tracklist has not been fetched yet, its tracks are pulled
+// from the streaming service and cached before returning. Hydration failures
+// (no session, network) return the playlist without tracks rather than an
+// error; the next SyncSource retries. Merging is left to SyncSource.
 func (s *Service) Get(ctx context.Context, id string) (playlist.Playlist, error) {
+	item, err := s.repo.Get(ctx, id)
+	if err != nil || !item.TracksStale || len(item.Sources) == 0 {
+		return item, err
+	}
+	src := item.Sources[0]
+	kind := musicsource.Kind(src.Kind)
+	session, err := s.session(kind)
+	if err != nil {
+		s.logger.Warn("hydrate on open: not connected", zap.String("kind", src.Kind), zap.Error(err))
+		return item, nil
+	}
+	provider, err := s.provider(kind)
+	if err != nil {
+		return item, nil
+	}
+	tracks, err := provider.PlaylistTracks(ctx, session, src.ExternalID)
+	if err != nil {
+		s.logger.Warn("hydrate on open failed", zap.String("kind", src.Kind), zap.Error(err))
+		return item, nil
+	}
+	if err := s.repo.SetImportedTracks(ctx, src.Kind, src.ExternalID, tracks); err != nil {
+		return playlist.Playlist{}, err
+	}
 	return s.repo.Get(ctx, id)
 }
 
