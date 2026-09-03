@@ -376,6 +376,23 @@ describe("App", () => {
     expect(screen.getByText("TIDAL favourites")).toBeInTheDocument();
   });
 
+  it("opens a playlist preview from a Browse row", async () => {
+    const p = playlist("p-open", "Deep Focus", "generated");
+    bindings.ListPlaylists.mockResolvedValue([p]);
+    bindings.GetPlaylist.mockResolvedValue(p);
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Browse" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Deep Focus/ }));
+
+    await waitFor(() =>
+      expect(bindings.GetPlaylist).toHaveBeenCalledWith("p-open"),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Deep Focus", level: 1 }),
+    ).toBeInTheDocument();
+  });
+
   it("renders Browse for an un-hydrated import whose tracklist is absent", async () => {
     const shellRevision = revision("Not hydrated yet");
     // A freshly imported shell has a revision but no tracks array yet.
@@ -415,7 +432,7 @@ describe("App", () => {
       { kind: "qobuz", available: false, connected: false, displayName: "" },
     ]);
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "History" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Browse" }));
     fireEvent.click(
       await screen.findByRole("button", { name: "Reload TIDAL" }),
     );
