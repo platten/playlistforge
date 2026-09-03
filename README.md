@@ -20,8 +20,13 @@ database service — just an executable and a local SQLite file.
 - **Prompt to playlist.** A natural-language brief becomes a titled, ordered
   playlist of 20–100 tracks, each with a rationale and recording/version notes.
 - **Every edit is a revision.** Remove a track, request a single replacement, or
-  refine the whole playlist with another prompt. Nothing is overwritten;
-  history stays browsable.
+  refine the whole playlist with another prompt. Nothing is overwritten; every
+  revision stays browsable.
+- **Bring your own playlists.** Connect TIDAL or Qobuz in Settings to mirror the
+  playlists you already have. Imports are read-only snapshots you can browse, use
+  as inspiration for a new brief, or hand to Soundiiz — never written back to the
+  service. Playlist Forge re-checks the connections in the background and prompts
+  you to reconnect if one expires.
 - **Grounded, not guessed.** The model is instructed to verify tracks and
   requested versions with web search and to avoid invented recordings.
 - **Transparent cost.** Each request shows an estimated USD cost derived from
@@ -35,7 +40,8 @@ database service — just an executable and a local SQLite file.
 ## How it works
 
 1. **Describe** the playlist, pick a track count and reasoning effort, and
-   optionally choose earlier playlists as inspiration.
+   optionally pick earlier playlists — generated here or imported from a
+   streaming service — as inspiration from **Browse**.
 2. **Generate.** Playlist Forge researches and orders the tracklist, then shows
    the title, description, per-track rationale, and cost estimate.
 3. **Revise.** Remove, replace, or refine. Each operation writes an immutable
@@ -92,11 +98,49 @@ Secret Service. If that store is unavailable, Settings offers an explicit opt-in
 to a permission-restricted `config.json` fallback in the application directory.
 The key is never written to `playlists.db`.
 
+## Import your existing playlists
+
+Playlist Forge can mirror the playlists you already own on a streaming service so
+you can browse them, draw on them as inspiration, or hand them to Soundiiz. This
+is optional and needs no OpenAI usage.
+
+1. Open **Settings > Streaming connections** and choose **Connect** next to TIDAL
+   or Qobuz.
+   - **TIDAL** approves in your real browser: a TIDAL verification page opens
+     with a short code, you confirm there, and the app finishes automatically.
+     If no browser opens, the URL is written to the log for you to open by hand.
+   - **Qobuz** signs in inside a small embedded window.
+
+   Sign in with the exact method that owns the library you want — Google, Apple,
+   Facebook, and email/password logins can resolve to different profiles on the
+   same address.
+2. Open **Browse**. Imported playlists appear grouped by origin — *Forged here*,
+   then *TIDAL*, then *Qobuz* — each row showing its track count and a badge for
+   every place it lives. Open one to preview its tracks.
+3. Use **Reload TIDAL** / **Reload Qobuz** in Browse to refresh the mirror. It
+   runs as a cancellable background job with progress: new playlists are added,
+   changed ones re-fetched, and playlists deleted upstream are removed. A
+   streaming playlist whose contents match one you forged here is folded into
+   that record rather than listed twice.
+
+Imported playlists are **read-only snapshots**. Playlist Forge never writes to
+your streaming account — it only reads playlist and track metadata. Credentials
+live only in your OS credential store (with the same file fallback as the OpenAI
+key), never in `playlists.db`.
+
+Connections are re-checked in the background (shortly after launch and every few
+minutes). If a session has expired or been revoked, a banner and the Settings
+row prompt you to **Reconnect**; your imported playlists are kept. A transient
+outage of TIDAL, Qobuz, or Soundiiz surfaces as "*… is not available right now.
+Please try again later.*" — retry the action after a moment.
+
 ## Using Playlist Forge
 
 1. Describe the playlist, choose 20 / 30 / 40 / 50 / 60 / 100 tracks, and select
    a reasoning effort (Medium is the default; higher efforts take longer).
-2. Optionally select up to ten earlier playlists as inspiration.
+2. Optionally open **Browse** and select any earlier playlists — generated here
+   or imported from a streaming service — to seed the brief. They appear as
+   removable chips on the composer.
 3. Review the generated title, description, ordering, recording and version
    notes, and per-track rationale.
 4. Remove tracks, request individual replacements, or refine the whole playlist
@@ -257,6 +301,11 @@ artifacts (Linux on both an x86-64 and an ARM64 runner), writes
   logged only at debug level.
 - `OPENAI_API_KEY` is read at runtime, never returned to the frontend, and
   cannot be changed or removed through the interface while it is set.
+- Streaming connections are read-only: Playlist Forge reads playlist and track
+  metadata from TIDAL and Qobuz and never writes to those accounts. Their
+  session tokens are stored beside the OpenAI key (OS credential store, or the
+  opt-in restricted file) and are never written to `playlists.db` or returned to
+  the frontend.
 
 ## Troubleshooting
 
@@ -266,6 +315,8 @@ artifacts (Linux on both an x86-64 and an ARM64 runner), writes
 | OpenAI validation failed | Confirm the key is active, billing is enabled, and the project can access `gpt-5.6-sol`. |
 | Operation is slow | After three seconds the app shows live progress and a Cancel button. Higher efforts and larger playlists take longer. |
 | Soundiiz link expired | Create a fresh handoff from the saved playlist preview. |
+| Streaming session expired | Open **Settings** (or use the banner) and choose **Reconnect** for that service. Imported playlists are kept; Browse shows **Reconnect** in place of **Reload** until you do. |
+| "… is not available right now" | A transient TIDAL, Qobuz, or Soundiiz outage. Wait a moment and retry the Reload or handoff; the connection itself is still fine. |
 
 ## License
 
