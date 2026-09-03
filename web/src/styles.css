@@ -633,7 +633,7 @@ select {
 
 .references {
   margin: 1.3rem 0;
-  padding: 1.1rem 1.15rem;
+  padding: 0.8rem 1.15rem 1.05rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface-2);
@@ -648,7 +648,7 @@ select {
   font-weight: 400;
 }
 .references-hint {
-  margin: 0.55rem 0 0;
+  margin: 0;
   color: var(--text-muted);
   font-size: 0.83rem;
 }
