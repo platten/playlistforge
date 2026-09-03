@@ -28,6 +28,12 @@ func (k Kind) Valid() bool { return k == KindTIDAL || k == KindQobuz }
 // ErrNotConnected is returned by callers when no session exists for a service.
 var ErrNotConnected = errors.New("streaming service is not connected")
 
+// ErrUnavailable wraps an adapter failure caused by the streaming service
+// itself being unreachable or erroring — a transport error, a timeout, or a
+// 429 / 5xx response — as distinct from a rejected credential (ErrNotConnected)
+// or a malformed request. Callers surface it to the user as "try again later".
+var ErrUnavailable = errors.New("streaming service is unavailable")
+
 // RemotePlaylist is a playlist as it exists on the service, before its tracks
 // are fetched. TrackCount comes from the list response; PlaylistTracks fetches
 // the ordered contents on demand.

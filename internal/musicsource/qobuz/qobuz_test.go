@@ -277,6 +277,36 @@ func TestVerifySessionRejectsExpiredToken(t *testing.T) {
 	}
 }
 
+func TestServiceOutageMapsToErrUnavailable(t *testing.T) {
+	raw, _ := json.Marshal(token{AppID: "1", AuthToken: "auth", UserID: "7"})
+	session := musicsource.Session{Raw: raw}
+
+	for _, status := range []int{429, 500, 503} {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/api.json/0.2/playlist/getUserPlaylists", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(status)
+		})
+		p, _ := newTestProvider(t, mux, nil, nil)
+		_, err := p.ListPlaylists(context.Background(), session)
+		if !errors.Is(err, musicsource.ErrUnavailable) {
+			t.Fatalf("status %d: err = %v, want ErrUnavailable", status, err)
+		}
+		if errors.Is(err, musicsource.ErrNotConnected) {
+			t.Fatalf("status %d wrongly read as a sign-out", status)
+		}
+	}
+
+	// A 404 is a plain API error, not an outage.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api.json/0.2/playlist/getUserPlaylists", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(404)
+	})
+	p, _ := newTestProvider(t, mux, nil, nil)
+	if _, err := p.ListPlaylists(context.Background(), session); err == nil || errors.Is(err, musicsource.ErrUnavailable) {
+		t.Fatalf("404 must be a plain error, got %v", err)
+	}
+}
+
 func TestDecodeRejectsEmptySession(t *testing.T) {
 	if _, err := decode(musicsource.Session{Raw: json.RawMessage(`{}`)}); !errors.Is(err, musicsource.ErrNotConnected) {
 		t.Fatalf("err = %v, want ErrNotConnected", err)

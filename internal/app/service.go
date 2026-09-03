@@ -281,7 +281,7 @@ func (s *Service) Handoff(playlistID string) (playlist.Job, error) {
 		s.phase(jobID, "Creating a secure Soundiiz handoff")
 		result, err := s.importer.Import(ctx, current.CurrentRevision)
 		if err != nil {
-			return "", err
+			return "", asServiceUnavailable("Soundiiz", err)
 		}
 		if result.Tracks != len(current.CurrentRevision.Tracks) {
 			return "", fmt.Errorf("handoff accepted %d of %d tracks from Soundiiz", result.Tracks, len(current.CurrentRevision.Tracks))
@@ -402,6 +402,33 @@ func publicError(err error) string {
 type publicFailureError interface {
 	PublicCode() string
 	PublicMessage() string
+}
+
+// serviceUnavailableError is the user-facing form of a musicsource.ErrUnavailable
+// or soundiiz.ErrUnavailable: the named external service could not be reached or
+// is failing. It carries a publicFailureError code so the frontend can style it,
+// and its Error() is already the message shown for calls that return directly
+// (UnlinkSource) rather than through a job.
+type serviceUnavailableError struct{ service string }
+
+func (e serviceUnavailableError) Error() string {
+	return e.service + " is not available right now. Please try again later."
+}
+func (e serviceUnavailableError) PublicCode() string    { return "service_unavailable" }
+func (e serviceUnavailableError) PublicMessage() string { return e.Error() }
+
+// asServiceUnavailable converts a musicsource.ErrUnavailable / soundiiz.ErrUnavailable
+// into a named, user-facing serviceUnavailableError. A cancelled operation is
+// passed through untouched so it is still reported as cancelled. Any other error
+// is returned as-is.
+func asServiceUnavailable(service string, err error) error {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return err
+	}
+	if errors.Is(err, musicsource.ErrUnavailable) || errors.Is(err, soundiiz.ErrUnavailable) {
+		return serviceUnavailableError{service: service}
+	}
+	return err
 }
 
 func publicFailure(err error) (string, string) {

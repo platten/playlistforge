@@ -19,6 +19,11 @@ import (
 // Endpoint is Soundiiz's documented public playlist-import endpoint.
 const Endpoint = "https://soundiiz.com/go/import-playlist"
 
+// ErrUnavailable wraps a failure caused by Soundiiz itself being unreachable or
+// erroring (a transport error, a timeout, or a 429 / 5xx response), as opposed
+// to Soundiiz rejecting the playlist. Callers surface it as "try again later".
+var ErrUnavailable = errors.New("Soundiiz is unavailable")
+
 // Client sends accepted playlist metadata to Soundiiz.
 type Client struct {
 	endpoint string
@@ -84,12 +89,15 @@ func (c *Client) Import(ctx context.Context, revision playlist.Revision) (Result
 	req.Header.Set("Accept", "application/json")
 	response, err := c.http.Do(req)
 	if err != nil {
-		return Result{}, fmt.Errorf("call Soundiiz: %w", err)
+		return Result{}, fmt.Errorf("%w: call Soundiiz: %w", ErrUnavailable, err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	data, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	if err != nil {
-		return Result{}, fmt.Errorf("read Soundiiz response: %w", err)
+		return Result{}, fmt.Errorf("%w: read Soundiiz response: %w", ErrUnavailable, err)
+	}
+	if response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= 500 {
+		return Result{}, fmt.Errorf("%w: Soundiiz returned %s", ErrUnavailable, response.Status)
 	}
 	var decoded importResponse
 	if err := json.Unmarshal(data, &decoded); err != nil {

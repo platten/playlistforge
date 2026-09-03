@@ -371,13 +371,17 @@ func (p *Provider) apiGet(ctx context.Context, appID, authToken, path string, q 
 
 	resp, err := p.http.Do(req)
 	if err != nil {
-		return err
+		// Transport failure — the service could not be reached. Keep the inner
+		// error matchable so a cancelled sync still reads as cancelled.
+		return fmt.Errorf("%w: reach qobuz: %w", musicsource.ErrUnavailable, err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized:
 		return musicsource.ErrNotConnected
+	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
+		return fmt.Errorf("%w: qobuz API %s", musicsource.ErrUnavailable, resp.Status)
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:
 		return fmt.Errorf("qobuz API %s: %s", resp.Status, snippet(body))
 	}
@@ -398,10 +402,13 @@ func (p *Provider) fetch(ctx context.Context, endpoint string) ([]byte, error) {
 	req.Header.Set("User-Agent", userAgent)
 	resp, err := p.http.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: reach qobuz: %w", musicsource.ErrUnavailable, err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+		return nil, fmt.Errorf("%w: GET %s: %s", musicsource.ErrUnavailable, endpoint, resp.Status)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("GET %s: %s", endpoint, resp.Status)
 	}

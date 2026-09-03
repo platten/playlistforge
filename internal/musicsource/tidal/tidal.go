@@ -481,13 +481,18 @@ func (p *Provider) getJSON(ctx context.Context, accessToken, country, path strin
 func (p *Provider) do(req *http.Request, out any) error {
 	resp, err := p.http.Do(req)
 	if err != nil {
-		return err
+		// Transport failures (DNS, refused, TLS, client timeout) mean the
+		// service could not be reached. Keep context.Canceled matchable so a
+		// cancelled sync is still reported as cancelled, not as an outage.
+		return fmt.Errorf("%w: reach tidal: %w", musicsource.ErrUnavailable, err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized:
 		return musicsource.ErrNotConnected
+	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
+		return fmt.Errorf("%w: tidal API %s", musicsource.ErrUnavailable, resp.Status)
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:
 		return fmt.Errorf("tidal API %s: %s", resp.Status, snippet(body))
 	}

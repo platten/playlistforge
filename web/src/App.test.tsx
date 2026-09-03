@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "jest-axe";
 import { Call } from "@wailsio/runtime";
 import App from "./App";
-import type { Config, ConnectionStatus } from "./types";
+import type { Config, ConnectionStatus, Job } from "./types";
 
 vi.mock("@wailsio/runtime", () => ({
   Call: { ByName: vi.fn() },
@@ -66,7 +66,7 @@ function installBindings() {
       }),
     ),
     DisconnectService: vi.fn(() => Promise.resolve()),
-    SyncSource: vi.fn(() =>
+    SyncSource: vi.fn((): Promise<Job> =>
       Promise.resolve({
         id: "sync-job",
         status: "running",
@@ -445,6 +445,30 @@ describe("App", () => {
     await waitFor(() =>
       expect(bindings.ListPlaylists.mock.calls.length).toBeGreaterThan(1),
     );
+  });
+
+  it("shows a try-again banner when a streaming service is unavailable", async () => {
+    bindings.Connections.mockResolvedValue([
+      { kind: "tidal", available: true, connected: true, displayName: "Me" },
+      { kind: "qobuz", available: false, connected: false, displayName: "" },
+    ]);
+    bindings.SyncSource.mockResolvedValue({
+      id: "sync-job",
+      status: "failed",
+      phase: "Failed",
+      error: "TIDAL is not available right now. Please try again later.",
+      errorCode: "service_unavailable",
+    });
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Browse" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Reload TIDAL" }),
+    );
+
+    expect(
+      await screen.findByText(/TIDAL is not available right now/i),
+    ).toBeInTheDocument();
   });
 
   it("connects and disconnects a streaming service from settings", async () => {

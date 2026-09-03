@@ -352,6 +352,42 @@ func TestVerifySessionRejectsExpiredToken(t *testing.T) {
 	}
 }
 
+func TestServiceOutageMapsToErrUnavailable(t *testing.T) {
+	raw, _ := json.Marshal(token{AccessToken: "a", RefreshToken: "r", UserID: "1", CountryCode: "US"})
+	session := musicsource.Session{Raw: raw}
+
+	for _, status := range []int{429, 500, 503} {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/users/1/playlists", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(status)
+		})
+		p := newTestProvider(t, mux)
+		_, err := p.ListPlaylists(context.Background(), session)
+		if !errors.Is(err, musicsource.ErrUnavailable) {
+			t.Fatalf("status %d: err = %v, want ErrUnavailable", status, err)
+		}
+		if errors.Is(err, musicsource.ErrNotConnected) {
+			t.Fatalf("status %d wrongly read as a sign-out", status)
+		}
+	}
+
+	// A transport failure (server closed) is also an outage, and a cancelled
+	// context stays matchable through the wrap.
+	srv := httptest.NewServer(http.NotFoundHandler())
+	p := New()
+	p.apiBase = srv.URL
+	srv.Close()
+	if _, err := p.ListPlaylists(context.Background(), session); !errors.Is(err, musicsource.ErrUnavailable) {
+		t.Fatalf("transport error = %v, want ErrUnavailable", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := p.ListPlaylists(ctx, session)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled request = %v, want context.Canceled to stay matchable", err)
+	}
+}
+
 func TestDecodeRejectsEmptySession(t *testing.T) {
 	if _, err := decode(musicsource.Session{Raw: json.RawMessage(`{}`)}); !errors.Is(err, musicsource.ErrNotConnected) {
 		t.Fatalf("err = %v, want ErrNotConnected", err)

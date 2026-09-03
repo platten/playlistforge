@@ -45,8 +45,20 @@ func (s *Service) SyncSourceJob(kind musicsource.Kind) (playlist.Job, error) {
 			s.progress(jobID, done, total)
 			s.phase(jobID, phase)
 		})
-		return "", err
+		return "", asServiceUnavailable(serviceName(kind), err)
 	})
+}
+
+// serviceName is the display name used in user-facing messages about a service.
+func serviceName(kind musicsource.Kind) string {
+	switch kind {
+	case musicsource.KindTIDAL:
+		return "TIDAL"
+	case musicsource.KindQobuz:
+		return "Qobuz"
+	default:
+		return string(kind)
+	}
 }
 
 // SyncSource runs a sync synchronously and returns a summary. Used internally by
@@ -250,7 +262,7 @@ func (s *Service) UnlinkSource(ctx context.Context, playlistID string, kind musi
 	}
 	// Re-import it as its own record; the next SyncSource will not re-merge it.
 	if _, err := s.SyncSource(ctx, kind); err != nil {
-		return playlist.Playlist{}, err
+		return playlist.Playlist{}, asServiceUnavailable(serviceName(kind), err)
 	}
 	return s.repo.Get(ctx, playlistID)
 }
