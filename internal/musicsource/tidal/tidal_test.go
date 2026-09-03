@@ -314,6 +314,80 @@ func TestUnauthorizedMapsToErrNotConnected(t *testing.T) {
 	}
 }
 
+func TestVerifySession(t *testing.T) {
+	var hits int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/sessions", func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if r.Header.Get("Authorization") != "Bearer access-1" {
+			t.Fatalf("auth header = %q", r.Header.Get("Authorization"))
+		}
+		writeJSON(w, map[string]any{"userId": 49927020, "countryCode": "NO"})
+	})
+	p := newTestProvider(t, mux)
+
+	raw, _ := json.Marshal(token{AccessToken: "access-1", RefreshToken: "r", UserID: "49927020", CountryCode: "NO"})
+	if err := p.VerifySession(context.Background(), musicsource.Session{Raw: raw}); err != nil {
+		t.Fatalf("VerifySession: %v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("expected one /sessions call, got %d", hits)
+	}
+}
+
+func TestVerifySessionRejectsExpiredToken(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/sessions", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	p := newTestProvider(t, mux)
+
+	raw, _ := json.Marshal(token{AccessToken: "expired", UserID: "1", CountryCode: "US"})
+	if err := p.VerifySession(context.Background(), musicsource.Session{Raw: raw}); !errors.Is(err, musicsource.ErrNotConnected) {
+		t.Fatalf("err = %v, want ErrNotConnected", err)
+	}
+
+	if err := p.VerifySession(context.Background(), musicsource.Session{Raw: json.RawMessage(`{}`)}); !errors.Is(err, musicsource.ErrNotConnected) {
+		t.Fatalf("empty session err = %v, want ErrNotConnected", err)
+	}
+}
+
+func TestServiceOutageMapsToErrUnavailable(t *testing.T) {
+	raw, _ := json.Marshal(token{AccessToken: "a", RefreshToken: "r", UserID: "1", CountryCode: "US"})
+	session := musicsource.Session{Raw: raw}
+
+	for _, status := range []int{429, 500, 503} {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/users/1/playlists", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(status)
+		})
+		p := newTestProvider(t, mux)
+		_, err := p.ListPlaylists(context.Background(), session)
+		if !errors.Is(err, musicsource.ErrUnavailable) {
+			t.Fatalf("status %d: err = %v, want ErrUnavailable", status, err)
+		}
+		if errors.Is(err, musicsource.ErrNotConnected) {
+			t.Fatalf("status %d wrongly read as a sign-out", status)
+		}
+	}
+
+	// A transport failure (server closed) is also an outage, and a cancelled
+	// context stays matchable through the wrap.
+	srv := httptest.NewServer(http.NotFoundHandler())
+	p := New()
+	p.apiBase = srv.URL
+	srv.Close()
+	if _, err := p.ListPlaylists(context.Background(), session); !errors.Is(err, musicsource.ErrUnavailable) {
+		t.Fatalf("transport error = %v, want ErrUnavailable", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := p.ListPlaylists(ctx, session)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled request = %v, want context.Canceled to stay matchable", err)
+	}
+}
+
 func TestDecodeRejectsEmptySession(t *testing.T) {
 	if _, err := decode(musicsource.Session{Raw: json.RawMessage(`{}`)}); !errors.Is(err, musicsource.ErrNotConnected) {
 		t.Fatalf("err = %v, want ErrNotConnected", err)

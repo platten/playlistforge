@@ -314,6 +314,9 @@ export default function App() {
   const [jobImmediate, setJobImmediate] = useState(false);
   const [error, setError] = useState<ErrorNotice | null>(null);
   const [theme, setTheme] = useState<Theme>(readTheme);
+  // The set of expired connections the user has dismissed the banner for,
+  // as a stable key. A newly-expired service changes the key and re-shows it.
+  const [reauthDismissed, setReauthDismissed] = useState("");
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -345,6 +348,32 @@ export default function App() {
     window.addEventListener("popstate", listener);
     return () => window.removeEventListener("popstate", listener);
   }, [refresh]);
+
+  useEffect(() => {
+    // Verify the streaming sessions in the background: shortly after load, every
+    // few minutes, and whenever the window regains focus. A failed probe is
+    // non-fatal — the next tick retries.
+    const check = () => {
+      api
+        .checkConnections()
+        .then(setConnections)
+        .catch(() => undefined);
+    };
+    const kickoff = window.setTimeout(check, 4000);
+    const interval = window.setInterval(check, 5 * 60_000);
+    window.addEventListener("focus", check);
+    return () => {
+      window.clearTimeout(kickoff);
+      window.clearInterval(interval);
+      window.removeEventListener("focus", check);
+    };
+  }, []);
+
+  const reauthKinds = connections
+    .filter((c) => c.connected && c.needsReauth)
+    .map((c) => c.kind);
+  const reauthKey = reauthKinds.join(",");
+  const showReauth = reauthKey !== "" && reauthKey !== reauthDismissed;
 
   function navigate(path: string) {
     window.history.pushState({}, "", path);
@@ -452,6 +481,32 @@ export default function App() {
           </button>
         </div>
       </header>
+      {showReauth && (
+        <div className="reauth-banner" role="alert">
+          <div className="reauth-banner-content">
+            <span>
+              {reauthKinds.map(serviceLabel).join(" and ")}{" "}
+              {reauthKinds.length > 1
+                ? "sessions have expired"
+                : "session has expired"}
+              . Reconnect to keep mirroring playlists.
+            </span>
+            <button
+              className="reauth-banner-action"
+              onClick={() => navigate("/settings")}
+            >
+              Open settings <span aria-hidden="true">→</span>
+            </button>
+          </div>
+          <button
+            className="reauth-banner-dismiss"
+            onClick={() => setReauthDismissed(reauthKey)}
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
       {error && error.message.trim() !== "" && (
         <div className="error-banner" role="alert">
           <div className="error-banner-content">
@@ -697,23 +752,35 @@ function CreatePage({
 function ReloadControls({
   connections,
   syncSource,
+  navigate,
 }: {
   connections: ConnectionStatus[];
   syncSource: (kind: string) => void;
+  navigate: (path: string) => void;
 }) {
   const connected = connections.filter((c) => c.connected);
   if (connected.length === 0) return null;
   return (
     <div className="reload-controls">
-      {connected.map((c) => (
-        <button
-          key={c.kind}
-          className="button secondary"
-          onClick={() => syncSource(c.kind)}
-        >
-          Reload {serviceLabel(c.kind)}
-        </button>
-      ))}
+      {connected.map((c) =>
+        c.needsReauth ? (
+          <button
+            key={c.kind}
+            className="button secondary needs-reauth"
+            onClick={() => navigate("/settings")}
+          >
+            Reconnect {serviceLabel(c.kind)}
+          </button>
+        ) : (
+          <button
+            key={c.kind}
+            className="button secondary"
+            onClick={() => syncSource(c.kind)}
+          >
+            Reload {serviceLabel(c.kind)}
+          </button>
+        ),
+      )}
     </div>
   );
 }
@@ -756,7 +823,11 @@ function BrowsePage({
             preview it, or select any to seed the composer.
           </p>
         </div>
-        <ReloadControls connections={connections} syncSource={syncSource} />
+        <ReloadControls
+          connections={connections}
+          syncSource={syncSource}
+          navigate={navigate}
+        />
       </div>
 
       {history.length === 0 ? (
@@ -1041,6 +1112,7 @@ function ConnectionRow({
   const [busy, setBusy] = useState(false);
   const available = status?.available ?? false;
   const connected = status?.connected ?? false;
+  const needsReauth = connected && (status?.needsReauth ?? false);
 
   async function connect() {
     setError("");
@@ -1068,20 +1140,45 @@ function ConnectionRow({
     }
   }
 
+  const displaySuffix = status?.displayName ? ` · ${status.displayName}` : "";
   return (
     <div className="connection-row">
       <div className="connection-id">
         <strong>{serviceLabel(kind)}</strong>
-        <span className={`connection-state${connected ? " on" : ""}`}>
+        <span
+          className={`connection-state${needsReauth ? " warn" : connected ? " on" : ""}`}
+        >
           {!available
             ? "Not available in this build"
-            : connected
-              ? `Connected${status?.displayName ? ` · ${status.displayName}` : ""}`
-              : "Not connected"}
+            : needsReauth
+              ? `Session expired${displaySuffix} — reconnect`
+              : connected
+                ? `Connected${displaySuffix}`
+                : "Not connected"}
         </span>
       </div>
-      {available &&
-        (connected ? (
+      {available && !connected && (
+        <button
+          className="button secondary"
+          type="button"
+          disabled={busy}
+          onClick={connect}
+        >
+          {busy ? "Waiting for sign-in…" : "Connect"}
+        </button>
+      )}
+      {available && connected && (
+        <div className="connection-actions">
+          {needsReauth && (
+            <button
+              className="button secondary"
+              type="button"
+              disabled={busy}
+              onClick={connect}
+            >
+              {busy ? "Waiting for sign-in…" : "Reconnect"}
+            </button>
+          )}
           <button
             className="button danger"
             type="button"
@@ -1090,16 +1187,8 @@ function ConnectionRow({
           >
             {busy ? "Working…" : "Disconnect"}
           </button>
-        ) : (
-          <button
-            className="button secondary"
-            type="button"
-            disabled={busy}
-            onClick={connect}
-          >
-            {busy ? "Waiting for sign-in…" : "Connect"}
-          </button>
-        ))}
+        </div>
+      )}
     </div>
   );
 }

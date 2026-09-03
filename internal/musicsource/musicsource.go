@@ -28,6 +28,12 @@ func (k Kind) Valid() bool { return k == KindTIDAL || k == KindQobuz }
 // ErrNotConnected is returned by callers when no session exists for a service.
 var ErrNotConnected = errors.New("streaming service is not connected")
 
+// ErrUnavailable wraps an adapter failure caused by the streaming service
+// itself being unreachable or erroring — a transport error, a timeout, or a
+// 429 / 5xx response — as distinct from a rejected credential (ErrNotConnected)
+// or a malformed request. Callers surface it to the user as "try again later".
+var ErrUnavailable = errors.New("streaming service is unavailable")
+
 // RemotePlaylist is a playlist as it exists on the service, before its tracks
 // are fetched. TrackCount comes from the list response; PlaylistTracks fetches
 // the ordered contents on demand.
@@ -85,6 +91,12 @@ type Provider interface {
 	// Refresh renews a Session that is near expiry. A provider with no refresh
 	// mechanism returns the session unchanged.
 	Refresh(ctx context.Context, s Session) (Session, error)
+	// VerifySession makes one cheap authenticated call to confirm the session is
+	// still usable. It returns ErrNotConnected when the service has definitively
+	// rejected the credentials, nil when they still work, and any other error
+	// for a transient failure (network, rate limit) that must not be read as a
+	// sign-out.
+	VerifySession(ctx context.Context, s Session) error
 
 	// ListPlaylists returns every playlist the user owns, paginating internally.
 	ListPlaylists(ctx context.Context, s Session) ([]RemotePlaylist, error)

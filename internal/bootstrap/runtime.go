@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -24,6 +25,13 @@ import (
 	"playlistforge/internal/storage"
 )
 
+// Streaming-session health is re-checked healthCheckDelay after start and every
+// healthCheckInterval after that.
+const (
+	healthCheckDelay    = 30 * time.Second
+	healthCheckInterval = 10 * time.Minute
+)
+
 // Options contains the process-specific inputs needed to start Playlist Forge.
 type Options struct {
 	Context        context.Context
@@ -37,10 +45,12 @@ type Runtime struct {
 	Keys      *credentials.Store
 	Validator *openaiapi.Validator
 
-	repo      *storage.Repository
-	logger    *zap.Logger
-	closeOnce sync.Once
-	closeErr  error
+	repo       *storage.Repository
+	logger     *zap.Logger
+	healthStop context.CancelFunc
+	healthDone chan struct{}
+	closeOnce  sync.Once
+	closeErr   error
 }
 
 // New constructs the complete application runtime.
@@ -75,18 +85,49 @@ func New(options Options) (*Runtime, error) {
 		musicsource.KindQobuz: qobuz.New(),
 	}
 	service := app.New(ctx, repo, openaiapi.New(keys, logger), soundiiz.New(), connections.New(configDir), sources, logger)
-	return &Runtime{
+	rt := &Runtime{
 		Service:   service,
 		Keys:      keys,
 		Validator: openaiapi.NewValidator(),
 		repo:      repo,
 		logger:    logger,
-	}, nil
+	}
+	// Poll the streaming services in the background so a session that has been
+	// revoked or expired surfaces as "reconnect" without waiting for the next
+	// manual reload. Close stops the loop.
+	if service.StreamingEnabled() {
+		loopCtx, cancel := context.WithCancel(ctx)
+		rt.healthStop = cancel
+		rt.healthDone = make(chan struct{})
+		go rt.runConnectionHealth(loopCtx)
+	}
+	return rt, nil
+}
+
+// runConnectionHealth re-verifies the streaming sessions on a timer until ctx
+// is cancelled.
+func (r *Runtime) runConnectionHealth(ctx context.Context) {
+	defer close(r.healthDone)
+	timer := time.NewTimer(healthCheckDelay)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			r.Service.CheckConnections(ctx)
+			timer.Reset(healthCheckInterval)
+		}
+	}
 }
 
 // Close stops background work before closing persistence.
 func (r *Runtime) Close() error {
 	r.closeOnce.Do(func() {
+		if r.healthStop != nil {
+			r.healthStop()
+			<-r.healthDone
+		}
 		r.Service.Close()
 		r.closeErr = errors.Join(r.closeErr, r.repo.Close())
 		_ = r.logger.Sync()

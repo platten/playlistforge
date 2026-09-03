@@ -307,6 +307,19 @@ type sessionsResponse struct {
 	CountryCode string `json:"countryCode"`
 }
 
+// VerifySession confirms the access token is still accepted by asking for the
+// current session record — a cheap call with no pagination. A 401 comes back as
+// ErrNotConnected via do; a near-expiry token is refreshed by the caller before
+// this runs.
+func (p *Provider) VerifySession(ctx context.Context, s musicsource.Session) error {
+	t, err := decode(s)
+	if err != nil {
+		return err
+	}
+	var sess sessionsResponse
+	return p.getJSON(ctx, t.AccessToken, t.CountryCode, "/sessions", nil, &sess)
+}
+
 // ListPlaylists returns every playlist the user has created, paginating over
 // the v1 users/{id}/playlists endpoint.
 func (p *Provider) ListPlaylists(ctx context.Context, s musicsource.Session) ([]musicsource.RemotePlaylist, error) {
@@ -468,13 +481,18 @@ func (p *Provider) getJSON(ctx context.Context, accessToken, country, path strin
 func (p *Provider) do(req *http.Request, out any) error {
 	resp, err := p.http.Do(req)
 	if err != nil {
-		return err
+		// Transport failures (DNS, refused, TLS, client timeout) mean the
+		// service could not be reached. Keep context.Canceled matchable so a
+		// cancelled sync is still reported as cancelled, not as an outage.
+		return fmt.Errorf("%w: reach tidal: %w", musicsource.ErrUnavailable, err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized:
 		return musicsource.ErrNotConnected
+	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
+		return fmt.Errorf("%w: tidal API %s", musicsource.ErrUnavailable, resp.Status)
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:
 		return fmt.Errorf("tidal API %s: %s", resp.Status, snippet(body))
 	}

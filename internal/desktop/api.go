@@ -171,6 +171,14 @@ func (a *API) OpenExternalURL(raw string) error {
 // Connections reports the status of every streaming service the build offers.
 func (a *API) Connections() []app.ConnectionStatus { return a.service.Connections() }
 
+// CheckConnections actively verifies each stored streaming session against its
+// service and returns the refreshed status list. The frontend calls this on an
+// interval and on window focus so an expired session is caught promptly.
+func (a *API) CheckConnections() []app.ConnectionStatus {
+	a.service.CheckConnections(a.ctx)
+	return a.service.Connections()
+}
+
 // ConnectService runs the sign-in window for kind and stores the resulting
 // session. The returned status reflects the connection after sign-in.
 func (a *API) ConnectService(kind string) (app.ConnectionStatus, error) {

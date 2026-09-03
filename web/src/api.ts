@@ -35,6 +35,8 @@ export interface BackendAPI {
 
   // Streaming import.
   connections(): Promise<ConnectionStatus[]>;
+  /** Actively verifies each session against its service, then returns status. */
+  checkConnections(): Promise<ConnectionStatus[]>;
   connectService(kind: string): Promise<ConnectionStatus>;
   disconnectService(kind: string): Promise<void>;
   /** Starts a background sync job; poll it with `waitForJob`. */
@@ -86,6 +88,7 @@ export const api: BackendAPI = {
   cancelJob: (id) => invoke("CancelJob", id),
   openExternalURL: (url) => invoke("OpenExternalURL", url),
   connections: () => invoke("Connections"),
+  checkConnections: () => invoke("CheckConnections"),
   connectService: (kind) => invoke("ConnectService", kind),
   disconnectService: (kind) => invoke("DisconnectService", kind),
   syncSource: (kind) => invoke("SyncSource", kind),

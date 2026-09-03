@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -30,6 +31,9 @@ type syncReporter func(completed, total int, phase string)
 // so an unconnected service fails immediately rather than through the job.
 func (s *Service) SyncSourceJob(kind musicsource.Kind) (playlist.Job, error) {
 	if _, err := s.session(kind); err != nil {
+		if errors.Is(err, musicsource.ErrNotConnected) {
+			s.markReauth(kind, true)
+		}
 		return playlist.Job{}, err
 	}
 	if _, err := s.provider(kind); err != nil {
@@ -41,8 +45,20 @@ func (s *Service) SyncSourceJob(kind musicsource.Kind) (playlist.Job, error) {
 			s.progress(jobID, done, total)
 			s.phase(jobID, phase)
 		})
-		return "", err
+		return "", asServiceUnavailable(serviceName(kind), err)
 	})
+}
+
+// serviceName is the display name used in user-facing messages about a service.
+func serviceName(kind musicsource.Kind) string {
+	switch kind {
+	case musicsource.KindTIDAL:
+		return "TIDAL"
+	case musicsource.KindQobuz:
+		return "Qobuz"
+	default:
+		return string(kind)
+	}
 }
 
 // SyncSource runs a sync synchronously and returns a summary. Used internally by
@@ -63,6 +79,9 @@ func (s *Service) syncSource(ctx context.Context, kind musicsource.Kind, report 
 	var result SyncResult
 	session, err := s.session(kind)
 	if err != nil {
+		if errors.Is(err, musicsource.ErrNotConnected) {
+			s.markReauth(kind, true)
+		}
 		return result, err
 	}
 	provider, err := s.provider(kind)
@@ -72,6 +91,9 @@ func (s *Service) syncSource(ctx context.Context, kind musicsource.Kind, report 
 	report(0, 0, "Listing "+label+" playlists")
 	remote, err := provider.ListPlaylists(ctx, session)
 	if err != nil {
+		if errors.Is(err, musicsource.ErrNotConnected) {
+			s.markReauth(kind, true)
+		}
 		return result, fmt.Errorf("list %s playlists: %w", kind, err)
 	}
 
@@ -240,7 +262,7 @@ func (s *Service) UnlinkSource(ctx context.Context, playlistID string, kind musi
 	}
 	// Re-import it as its own record; the next SyncSource will not re-merge it.
 	if _, err := s.SyncSource(ctx, kind); err != nil {
-		return playlist.Playlist{}, err
+		return playlist.Playlist{}, asServiceUnavailable(serviceName(kind), err)
 	}
 	return s.repo.Get(ctx, playlistID)
 }

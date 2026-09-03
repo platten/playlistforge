@@ -108,6 +108,43 @@ func TestImportTransportAndReadErrors(t *testing.T) {
 	}
 }
 
+func TestImportClassifiesServiceOutage(t *testing.T) {
+	// Transport failure.
+	client := New()
+	client.http = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("offline")
+	})}
+	if _, err := client.Import(context.Background(), revision()); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("transport error not classified as unavailable: %v", err)
+	}
+
+	// A 503 from Soundiiz.
+	for _, status := range []int{429, 500, 503} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(status)
+		}))
+		c := New()
+		c.endpoint = server.URL
+		_, err := c.Import(context.Background(), revision())
+		server.Close()
+		if !errors.Is(err, ErrUnavailable) {
+			t.Fatalf("status %d not classified as unavailable: %v", status, err)
+		}
+	}
+
+	// A 400 rejection is NOT an outage.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(400)
+		_, _ = w.Write([]byte(`{"status":"error","message":"bad tracks"}`))
+	}))
+	defer server.Close()
+	c := New()
+	c.endpoint = server.URL
+	if _, err := c.Import(context.Background(), revision()); err == nil || errors.Is(err, ErrUnavailable) {
+		t.Fatalf("a 400 rejection must not be an outage: %v", err)
+	}
+}
+
 func TestNewRejectsRedirects(t *testing.T) {
 	client := New()
 	req, _ := http.NewRequest(http.MethodGet, "https://example.test", nil)

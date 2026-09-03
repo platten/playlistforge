@@ -199,6 +199,156 @@ func TestConnectionEdgeCases(t *testing.T) {
 	})
 }
 
+func TestCheckConnectionsFlagsReauth(t *testing.T) {
+	sessions := newFakeSessions()
+	tidal := msfake.New(musicsource.KindTIDAL)
+	svc := newConnService(t, sessions, musicsource.Registry{musicsource.KindTIDAL: tidal})
+	if _, err := svc.CompleteAuth(context.Background(), musicsource.KindTIDAL, "tok"); err != nil {
+		t.Fatal(err)
+	}
+
+	// A healthy session verifies clean.
+	svc.CheckConnections(context.Background())
+	if tidal.VerifyCalls != 1 {
+		t.Fatalf("expected one verify call, got %d", tidal.VerifyCalls)
+	}
+	if svc.Connections()[0].NeedsReauth {
+		t.Fatal("healthy session should not need reauth")
+	}
+
+	// The service now rejects the token.
+	tidal.VerifyErr = musicsource.ErrNotConnected
+	svc.CheckConnections(context.Background())
+	status := svc.Connections()[0]
+	if !status.Connected || !status.NeedsReauth || status.DisplayName != "Fake User" {
+		t.Fatalf("expected connected+needsReauth with a name, got %+v", status)
+	}
+
+	// A transient failure must not clear the reauth flag.
+	tidal.VerifyErr = errors.New("network unreachable")
+	svc.CheckConnections(context.Background())
+	if !svc.Connections()[0].NeedsReauth {
+		t.Fatal("transient verify error wrongly cleared the reauth flag")
+	}
+
+	// Reconnecting clears it.
+	tidal.VerifyErr = nil
+	if _, err := svc.CompleteAuth(context.Background(), musicsource.KindTIDAL, "tok2"); err != nil {
+		t.Fatal(err)
+	}
+	if svc.Connections()[0].NeedsReauth {
+		t.Fatal("reconnect should clear the reauth flag")
+	}
+}
+
+func TestCheckConnectionsClearsFlagWhenDisconnected(t *testing.T) {
+	sessions := newFakeSessions()
+	tidal := msfake.New(musicsource.KindTIDAL)
+	tidal.VerifyErr = musicsource.ErrNotConnected
+	svc := newConnService(t, sessions, musicsource.Registry{musicsource.KindTIDAL: tidal})
+	if _, err := svc.CompleteAuth(context.Background(), musicsource.KindTIDAL, "tok"); err != nil {
+		t.Fatal(err)
+	}
+	svc.CheckConnections(context.Background())
+	if !svc.Connections()[0].NeedsReauth {
+		t.Fatal("expected reauth flag set")
+	}
+	if err := svc.Disconnect(musicsource.KindTIDAL); err != nil {
+		t.Fatal(err)
+	}
+	svc.CheckConnections(context.Background())
+	if svc.Connections()[0].Connected || svc.Connections()[0].NeedsReauth {
+		t.Fatalf("disconnected service should be clean: %+v", svc.Connections()[0])
+	}
+}
+
+func TestSyncFlagsReauthOnAuthFailure(t *testing.T) {
+	sessions := newFakeSessions()
+	tidal := msfake.New(musicsource.KindTIDAL)
+	tidal.ListErr = musicsource.ErrNotConnected
+	svc := newConnService(t, sessions, musicsource.Registry{musicsource.KindTIDAL: tidal})
+	if _, err := svc.CompleteAuth(context.Background(), musicsource.KindTIDAL, "tok"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.SyncSource(context.Background(), musicsource.KindTIDAL); err == nil {
+		t.Fatal("expected the sync to fail")
+	}
+	if !svc.Connections()[0].NeedsReauth {
+		t.Fatal("a sync that hit ErrNotConnected should flag reauth")
+	}
+}
+
+func TestStreamingEnabled(t *testing.T) {
+	if newConnService(t, nil, nil).StreamingEnabled() {
+		t.Fatal("no store/registry: streaming should be disabled")
+	}
+	full := newConnService(t, newFakeSessions(), musicsource.Registry{musicsource.KindTIDAL: msfake.New(musicsource.KindTIDAL)})
+	if !full.StreamingEnabled() {
+		t.Fatal("store + registry: streaming should be enabled")
+	}
+}
+
+func TestCheckConnectionsSkipsKindWithoutProvider(t *testing.T) {
+	sessions := newFakeSessions()
+	svc := newConnService(t, sessions, musicsource.Registry{}) // empty registry
+	// A stored session for a kind the registry no longer offers.
+	if err := svc.saveSession(musicsource.Session{
+		Kind: musicsource.KindTIDAL, Raw: []byte(`{"accessToken":"a"}`), DisplayName: "Ghost",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	svc.CheckConnections(context.Background()) // must not panic on the missing provider
+
+	status := svc.Connections()[0]
+	if !status.Connected || status.DisplayName != "Ghost" {
+		t.Fatalf("expected a connected ghost row, got %+v", status)
+	}
+}
+
+func TestConnectionsSurfacesUnrefreshableSession(t *testing.T) {
+	sessions := newFakeSessions()
+	tidal := msfake.New(musicsource.KindTIDAL)
+	tidal.RefreshErr = errors.New("refresh token revoked")
+	svc := newConnService(t, sessions, musicsource.Registry{musicsource.KindTIDAL: tidal})
+
+	// A stored session that is past the refresh threshold and can't be renewed.
+	if err := svc.saveSession(musicsource.Session{
+		Kind: musicsource.KindTIDAL, Raw: []byte(`{"accessToken":"a"}`),
+		DisplayName: "Listener", ExpiresAt: time.Now().Add(10 * time.Second),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	status := svc.Connections()[0]
+	if !status.Connected || !status.NeedsReauth || status.DisplayName != "Listener" {
+		t.Fatalf("want connected+needsReauth+name, got %+v", status)
+	}
+}
+
+func TestUndecodableSessionReportsReauth(t *testing.T) {
+	sessions := newFakeSessions()
+	sessions.data["tidal"] = []byte("not-json")
+	svc := newConnService(t, sessions, musicsource.Registry{musicsource.KindTIDAL: msfake.New(musicsource.KindTIDAL)})
+
+	// Connections keeps the row visible with no name it can recover.
+	status := svc.Connections()[0]
+	if !status.Connected || !status.NeedsReauth || status.DisplayName != "" {
+		t.Fatalf("want connected+needsReauth, no name; got %+v", status)
+	}
+	// CheckConnections reaches the same conclusion via the session() failure.
+	svc.markReauth(musicsource.KindTIDAL, false)
+	svc.CheckConnections(context.Background())
+	if !svc.Connections()[0].NeedsReauth {
+		t.Fatal("CheckConnections should flag an undecodable session")
+	}
+}
+
+func TestStartConnectionHealthIsSafeWithoutStreaming(t *testing.T) {
+	svc := newConnService(t, nil, nil)
+	svc.CheckConnections(context.Background()) // no store: must be a safe no-op
+}
+
 func TestConnectionsWithoutStreaming(t *testing.T) {
 	svc := newConnService(t, nil, nil)
 	for _, s := range svc.Connections() {

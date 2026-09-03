@@ -94,6 +94,9 @@ func TestStreamingMethods(t *testing.T) {
 	if status := api.Connections(); len(status) != 2 || status[0].Connected || status[0].Available {
 		t.Fatalf("connections: %+v", status)
 	}
+	if status := api.CheckConnections(); len(status) != 2 || status[0].Connected || status[0].NeedsReauth {
+		t.Fatalf("check connections: %+v", status)
+	}
 	if _, err := api.ConnectService("tidal"); err == nil {
 		t.Fatal("connect without a sign-in window should fail")
 	}

@@ -10,7 +10,9 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,6 +21,7 @@ import (
 	"playlistforge/internal/musicsource"
 	msfake "playlistforge/internal/musicsource/fake"
 	"playlistforge/internal/playlist"
+	"playlistforge/internal/soundiiz"
 	"playlistforge/internal/storage"
 )
 
@@ -293,6 +296,60 @@ func TestSyncSourceErrors(t *testing.T) {
 	}
 	if _, err := svc.SyncSource(ctx, musicsource.KindQobuz); err == nil {
 		t.Fatal("sync of an unconnected service should fail")
+	}
+}
+
+func TestSyncSourceJobReportsServiceOutage(t *testing.T) {
+	svc, _, tidal, _ := newImportService(t)
+	tidal.ListErr = fmt.Errorf("list tidal playlists: %w", musicsource.ErrUnavailable)
+
+	job, err := svc.SyncSourceJob(musicsource.KindTIDAL)
+	if err != nil {
+		t.Fatalf("SyncSourceJob: %v", err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	var final playlist.Job
+	for time.Now().Before(deadline) {
+		final, _ = svc.GetJob(job.ID)
+		if final.Status == playlist.JobSucceeded || final.Status == playlist.JobFailed {
+			break
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	if final.Status != playlist.JobFailed {
+		t.Fatalf("status = %q, want failed", final.Status)
+	}
+	if final.ErrorCode != "service_unavailable" {
+		t.Fatalf("errorCode = %q, want service_unavailable", final.ErrorCode)
+	}
+	if !strings.Contains(final.Error, "TIDAL is not available") {
+		t.Fatalf("message = %q", final.Error)
+	}
+}
+
+func TestAsServiceUnavailable(t *testing.T) {
+	if asServiceUnavailable("TIDAL", nil) != nil {
+		t.Fatal("nil must pass through")
+	}
+	if err := asServiceUnavailable("TIDAL", context.Canceled); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation must pass through: %v", err)
+	}
+	plain := errors.New("bad request")
+	if err := asServiceUnavailable("TIDAL", plain); !errors.Is(err, plain) {
+		t.Fatalf("an unrelated error must pass through: %v", err)
+	}
+	for name, src := range map[string]error{
+		"musicsource": fmt.Errorf("x: %w", musicsource.ErrUnavailable),
+		"soundiiz":    fmt.Errorf("x: %w", soundiiz.ErrUnavailable),
+	} {
+		err := asServiceUnavailable("Qobuz", src)
+		var pub publicFailureError
+		if !errors.As(err, &pub) || pub.PublicCode() != "service_unavailable" {
+			t.Fatalf("%s: not classified: %v", name, err)
+		}
+		if !strings.Contains(pub.PublicMessage(), "Qobuz is not available") {
+			t.Fatalf("%s: message = %q", name, pub.PublicMessage())
+		}
 	}
 }
 

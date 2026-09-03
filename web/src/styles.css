@@ -863,6 +863,76 @@ select {
   color: var(--text);
 }
 
+/* Streaming session expired — a persistent warning, not a transient error. */
+.reauth-banner {
+  position: sticky;
+  z-index: 40;
+  top: 0.8rem;
+  max-width: 900px;
+  margin: 0.8rem auto -1.5rem;
+  padding: 0.85rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid color-mix(in srgb, var(--coral) 55%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-3);
+}
+.reauth-banner::before {
+  content: "↻";
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--coral);
+  color: var(--bg);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.reauth-banner-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: 0;
+}
+.reauth-banner-content > span {
+  font-size: 0.88rem;
+}
+.reauth-banner .reauth-banner-action {
+  flex: 0 0 auto;
+  padding: 0.25rem 0;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: none;
+  color: var(--coral);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+.reauth-banner .reauth-banner-action:hover {
+  color: var(--text);
+}
+.reauth-banner .reauth-banner-dismiss {
+  flex: 0 0 auto;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+.reauth-banner .reauth-banner-dismiss:hover {
+  color: var(--text);
+}
+
 .empty {
   margin-top: 2.8rem;
   padding: 2.4rem;
@@ -1579,6 +1649,20 @@ h1.settings-section {
 }
 .connection-state.on {
   color: var(--accent-text);
+}
+.connection-state.warn {
+  color: var(--coral);
+}
+.connection-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.reload-controls .needs-reauth {
+  border-color: color-mix(in srgb, var(--coral) 55%, transparent);
+  color: var(--coral);
 }
 
 /* ----------------------------------------------------------------------------
