@@ -21,15 +21,18 @@ type Provider struct {
 	Playlists []musicsource.RemotePlaylist
 	// Tracks maps an ExternalID to that playlist's ordered tracks.
 	Tracks map[string][]playlist.Track
-	// ListErr / TracksErr / RefreshErr, when set, are returned instead of data.
+	// ListErr / TracksErr / RefreshErr / VerifyErr, when set, are returned
+	// instead of data.
 	ListErr    error
 	TracksErr  error
 	RefreshErr error
+	VerifyErr  error
 
-	ListCalls  int
-	TrackCalls map[string]int
-	Completed  string // the last value passed to Complete
-	Refreshed  int
+	ListCalls   int
+	TrackCalls  map[string]int
+	Completed   string // the last value passed to Complete
+	Refreshed   int
+	VerifyCalls int
 }
 
 // New returns a fake for kind with empty data.
@@ -62,6 +65,11 @@ func (p *Provider) Refresh(_ context.Context, s musicsource.Session) (musicsourc
 		return musicsource.Session{}, p.RefreshErr
 	}
 	return s, nil
+}
+
+func (p *Provider) VerifySession(_ context.Context, _ musicsource.Session) error {
+	p.VerifyCalls++
+	return p.VerifyErr
 }
 
 func (p *Provider) ListPlaylists(_ context.Context, _ musicsource.Session) ([]musicsource.RemotePlaylist, error) {

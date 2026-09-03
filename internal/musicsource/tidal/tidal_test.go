@@ -314,6 +314,44 @@ func TestUnauthorizedMapsToErrNotConnected(t *testing.T) {
 	}
 }
 
+func TestVerifySession(t *testing.T) {
+	var hits int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/sessions", func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if r.Header.Get("Authorization") != "Bearer access-1" {
+			t.Fatalf("auth header = %q", r.Header.Get("Authorization"))
+		}
+		writeJSON(w, map[string]any{"userId": 49927020, "countryCode": "NO"})
+	})
+	p := newTestProvider(t, mux)
+
+	raw, _ := json.Marshal(token{AccessToken: "access-1", RefreshToken: "r", UserID: "49927020", CountryCode: "NO"})
+	if err := p.VerifySession(context.Background(), musicsource.Session{Raw: raw}); err != nil {
+		t.Fatalf("VerifySession: %v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("expected one /sessions call, got %d", hits)
+	}
+}
+
+func TestVerifySessionRejectsExpiredToken(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/sessions", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	p := newTestProvider(t, mux)
+
+	raw, _ := json.Marshal(token{AccessToken: "expired", UserID: "1", CountryCode: "US"})
+	if err := p.VerifySession(context.Background(), musicsource.Session{Raw: raw}); !errors.Is(err, musicsource.ErrNotConnected) {
+		t.Fatalf("err = %v, want ErrNotConnected", err)
+	}
+
+	if err := p.VerifySession(context.Background(), musicsource.Session{Raw: json.RawMessage(`{}`)}); !errors.Is(err, musicsource.ErrNotConnected) {
+		t.Fatalf("empty session err = %v, want ErrNotConnected", err)
+	}
+}
+
 func TestDecodeRejectsEmptySession(t *testing.T) {
 	if _, err := decode(musicsource.Session{Raw: json.RawMessage(`{}`)}); !errors.Is(err, musicsource.ErrNotConnected) {
 		t.Fatalf("err = %v, want ErrNotConnected", err)

@@ -85,6 +85,12 @@ type Provider interface {
 	// Refresh renews a Session that is near expiry. A provider with no refresh
 	// mechanism returns the session unchanged.
 	Refresh(ctx context.Context, s Session) (Session, error)
+	// VerifySession makes one cheap authenticated call to confirm the session is
+	// still usable. It returns ErrNotConnected when the service has definitively
+	// rejected the credentials, nil when they still work, and any other error
+	// for a transient failure (network, rate limit) that must not be read as a
+	// sign-out.
+	VerifySession(ctx context.Context, s Session) error
 
 	// ListPlaylists returns every playlist the user owns, paginating internally.
 	ListPlaylists(ctx context.Context, s Session) ([]RemotePlaylist, error)

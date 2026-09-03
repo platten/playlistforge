@@ -78,6 +78,12 @@ export interface ConnectionStatus {
   available: boolean;
   connected: boolean;
   displayName: string;
+  /**
+   * A stored session the service has rejected (or that can no longer be
+   * refreshed). The session is kept so the user can reconnect in one click.
+   * Absent is treated as `false`.
+   */
+  needsReauth?: boolean;
 }
 
 export interface Job {

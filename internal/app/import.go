@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -30,6 +31,9 @@ type syncReporter func(completed, total int, phase string)
 // so an unconnected service fails immediately rather than through the job.
 func (s *Service) SyncSourceJob(kind musicsource.Kind) (playlist.Job, error) {
 	if _, err := s.session(kind); err != nil {
+		if errors.Is(err, musicsource.ErrNotConnected) {
+			s.markReauth(kind, true)
+		}
 		return playlist.Job{}, err
 	}
 	if _, err := s.provider(kind); err != nil {
@@ -63,6 +67,9 @@ func (s *Service) syncSource(ctx context.Context, kind musicsource.Kind, report 
 	var result SyncResult
 	session, err := s.session(kind)
 	if err != nil {
+		if errors.Is(err, musicsource.ErrNotConnected) {
+			s.markReauth(kind, true)
+		}
 		return result, err
 	}
 	provider, err := s.provider(kind)
@@ -72,6 +79,9 @@ func (s *Service) syncSource(ctx context.Context, kind musicsource.Kind, report 
 	report(0, 0, "Listing "+label+" playlists")
 	remote, err := provider.ListPlaylists(ctx, session)
 	if err != nil {
+		if errors.Is(err, musicsource.ErrNotConnected) {
+			s.markReauth(kind, true)
+		}
 		return result, fmt.Errorf("list %s playlists: %w", kind, err)
 	}
 

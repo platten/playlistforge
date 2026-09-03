@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "jest-axe";
 import { Call } from "@wailsio/runtime";
 import App from "./App";
-import type { Config } from "./types";
+import type { Config, ConnectionStatus } from "./types";
 
 vi.mock("@wailsio/runtime", () => ({
   Call: { ByName: vi.fn() },
@@ -50,12 +50,13 @@ function installBindings() {
     GetJob: vi.fn(() => Promise.resolve({})),
     CancelJob: vi.fn(() => Promise.resolve()),
     OpenExternalURL: vi.fn(() => Promise.resolve()),
-    Connections: vi.fn(() =>
+    Connections: vi.fn((): Promise<ConnectionStatus[]> =>
       Promise.resolve([
         { kind: "tidal", available: false, connected: false, displayName: "" },
         { kind: "qobuz", available: false, connected: false, displayName: "" },
       ]),
     ),
+    CheckConnections: vi.fn(() => bindings.Connections()),
     ConnectService: vi.fn(() =>
       Promise.resolve({
         kind: "tidal",
@@ -471,6 +472,63 @@ describe("App", () => {
     await waitFor(() =>
       expect(bindings.DisconnectService).toHaveBeenCalledWith("tidal"),
     );
+  });
+
+  it("surfaces an expired streaming session as a reconnect prompt", async () => {
+    bindings.Connections.mockResolvedValue([
+      {
+        kind: "tidal",
+        available: true,
+        connected: true,
+        displayName: "Listener",
+        needsReauth: true,
+      },
+      { kind: "qobuz", available: false, connected: false, displayName: "" },
+    ]);
+
+    render(<App />);
+
+    // App-wide banner.
+    expect(
+      await screen.findByText(/TIDAL session has expired/i),
+    ).toBeInTheDocument();
+
+    // Settings row shows the expired state and a Reconnect action.
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(
+      await screen.findByText(/Session expired · Listener — reconnect/i),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+    await waitFor(() =>
+      expect(bindings.ConnectService).toHaveBeenCalledWith("tidal"),
+    );
+
+    // Browse offers Reconnect in place of Reload.
+    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
+    expect(
+      await screen.findByRole("button", { name: "Reconnect TIDAL" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Reload TIDAL" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("dismisses the reconnect banner until another session expires", async () => {
+    bindings.Connections.mockResolvedValue([
+      {
+        kind: "tidal",
+        available: true,
+        connected: true,
+        displayName: "Listener",
+        needsReauth: true,
+      },
+      { kind: "qobuz", available: false, connected: false, displayName: "" },
+    ]);
+
+    render(<App />);
+    const banner = await screen.findByText(/TIDAL session has expired/i);
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(banner).not.toBeInTheDocument();
   });
 
   it("offers a direct Soundiiz handoff without destination controls", async () => {

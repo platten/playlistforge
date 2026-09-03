@@ -142,6 +142,18 @@ func (p *Provider) Refresh(_ context.Context, s musicsource.Session) (musicsourc
 	return s, nil
 }
 
+// VerifySession confirms the stored auth token still works by re-reading the
+// account through /user/login — no playlist enumeration, so it stays clear of
+// the rate limiter. A rejected token comes back as ErrNotConnected via apiGet.
+func (p *Provider) VerifySession(ctx context.Context, s musicsource.Session) error {
+	t, err := decode(s)
+	if err != nil {
+		return err
+	}
+	_, err = p.currentUser(ctx, t.AppID, t.AuthToken)
+	return err
+}
+
 // resolveAppID scrapes the numeric app id from the web player's JS bundle,
 // caching it for the life of the process.
 func (p *Provider) resolveAppID(ctx context.Context) (string, error) {

@@ -61,6 +61,7 @@ Application data defaults to `os.UserConfigDir()/playlist-forge`. The SQLite dat
 - `internal/soundiiz` owns the public import payload and validates returned handoff URLs.
 - `internal/musicsource` is the port for reading a listener's existing playlists from a streaming service; `internal/musicsource/tidal` (OAuth device flow, approved in the system browser) and `internal/musicsource/qobuz` (web-player token captured from the embedded sign-in window) are reverse-engineered adapters using community client credentials and undocumented endpoints, and `internal/musicsource/fake` drives the import pipeline in tests.
 - `internal/connections` owns the per-service streaming session store: OS keyring first, with an automatic 0600 file fallback under the application directory for hosts without a Secret Service (headless Linux, WSL).
+- Streaming sessions are health-checked: each `musicsource.Provider` exposes `VerifySession` (one cheap authenticated call), `app.Service.CheckConnections` caches the per-service result, and `internal/bootstrap` runs it on a background timer. A rejected or unrefreshable session is kept but reported with `needsReauth`, which the UI surfaces as a reconnect banner rather than silently dropping the connection.
 - `internal/storage` owns the SQLite schema and transactions. Playlist edits append immutable revisions.
 - `internal/credentials` owns environment, keyring, and explicitly authorized config-file credential precedence.
 - `internal/logging` owns Zap construction and mandatory secret redaction.

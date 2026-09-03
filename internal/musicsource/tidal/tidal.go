@@ -307,6 +307,19 @@ type sessionsResponse struct {
 	CountryCode string `json:"countryCode"`
 }
 
+// VerifySession confirms the access token is still accepted by asking for the
+// current session record — a cheap call with no pagination. A 401 comes back as
+// ErrNotConnected via do; a near-expiry token is refreshed by the caller before
+// this runs.
+func (p *Provider) VerifySession(ctx context.Context, s musicsource.Session) error {
+	t, err := decode(s)
+	if err != nil {
+		return err
+	}
+	var sess sessionsResponse
+	return p.getJSON(ctx, t.AccessToken, t.CountryCode, "/sessions", nil, &sess)
+}
+
 // ListPlaylists returns every playlist the user has created, paginating over
 // the v1 users/{id}/playlists endpoint.
 func (p *Provider) ListPlaylists(ctx context.Context, s musicsource.Session) ([]musicsource.RemotePlaylist, error) {

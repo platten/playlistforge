@@ -59,6 +59,10 @@ type Service struct {
 	syncGate chan struct{}
 	workers  sync.WaitGroup
 	now      func() time.Time
+	// health caches the last outcome of a streaming-session verification,
+	// keyed by Kind, so Connections() can report a "reconnect" state without
+	// making a network call on every read. Guarded by mu.
+	health map[musicsource.Kind]connHealth
 }
 
 // New constructs a Service whose jobs are cancelled when parent is cancelled.
@@ -71,6 +75,7 @@ func New(parent context.Context, repo playlist.Repository, generator playlist.Ge
 		ctx: ctx, cancel: cancel,
 		jobs: make(map[string]playlist.Job), cancels: make(map[string]context.CancelFunc),
 		gate: make(chan struct{}, 1), syncGate: make(chan struct{}, 1), now: time.Now,
+		health: make(map[musicsource.Kind]connHealth),
 	}
 }
 
