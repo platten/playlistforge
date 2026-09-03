@@ -132,7 +132,9 @@ func runAuth(req musicsource.AuthRequest) (string, error) {
 
 	select {
 	case value := <-result:
+		slog.Info("streaming sign-in: captured, closing window", "bytes", len(value))
 		window.Close()
+		slog.Info("streaming sign-in: window closed, running Complete")
 		return value, nil
 	case <-closed:
 		slog.Info("streaming sign-in: window closed before a capture")

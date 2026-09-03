@@ -4,6 +4,7 @@ package desktop
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/url"
 	"strings"
 
@@ -185,7 +186,10 @@ func (a *API) ConnectService(kind string) (app.ConnectionStatus, error) {
 	if err != nil {
 		return app.ConnectionStatus{}, err
 	}
-	return a.service.CompleteAuth(a.ctx, musicsource.Kind(kind), captured)
+	slog.Info("connect: completing sign-in", "kind", kind, "captured_bytes", len(captured))
+	status, err := a.service.CompleteAuth(a.ctx, musicsource.Kind(kind), captured)
+	slog.Info("connect: complete done", "kind", kind, "connected", status.Connected, "err", err)
+	return status, err
 }
 
 // DisconnectService removes the stored session for kind. Imported playlists are
