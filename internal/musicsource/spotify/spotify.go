@@ -57,6 +57,10 @@ if(!window.__pfSpInit){
 var t=window.__pfSpTok;
 if(!t){var scan=function(store){try{for(var i=0;i<store.length;i++){var raw=store.getItem(store.key(i));if(!raw||raw.indexOf("accessToken")<0){continue;}try{var o=JSON.parse(raw);if(o&&typeof o.accessToken==="string"&&o.accessToken){return {accessToken:o.accessToken,exp:o.accessTokenExpirationTimestampMs||0};}}catch(e){}}}catch(e){}return null;};t=scan(window.localStorage)||scan(window.sessionStorage);}
 if(!t){return "";}
+if(!window.__pfSpSeenAt){window.__pfSpSeenAt=Date.now();}
+// Hold the capture until the client token is seen (the web player sends it on
+// its own api requests), giving up after ~8s so sign-in never stalls.
+if(!window.__pfSpCT && Date.now()-window.__pfSpSeenAt < 8000){return "";}
 return JSON.stringify({accessToken:t.accessToken,accessTokenExpirationTimestampMs:t.exp,clientToken:window.__pfSpCT||""});
 }catch(e){return "";}})()`
 
