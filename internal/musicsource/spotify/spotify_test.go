@@ -19,6 +19,10 @@ func newTestProvider(t *testing.T, mux *http.ServeMux) *Provider {
 	t.Cleanup(srv.Close)
 	p := New()
 	p.apiBase = srv.URL
+	// The live build talks through a Chrome-impersonating tls-client; the tests
+	// exercise adapter behaviour against a plain httptest server, so use a plain
+	// client here.
+	p.http = &http.Client{}
 	return p
 }
 

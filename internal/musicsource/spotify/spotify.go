@@ -36,7 +36,14 @@ const (
 	// assumedTokenLife bounds how long a captured token is trusted when the
 	// capture didn't include an expiry.
 	assumedTokenLife = 50 * time.Minute
-	userAgent        = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+
+	// These four values are sent together so the request matches what the
+	// Spotify web player emits from Chrome 133 on Windows. The Chrome major
+	// version must line up with the tls-client profile in chromeClient.
+	userAgent       = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+	secCHUA         = `"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"`
+	secCHUAMobile   = "?0"
+	secCHUAPlatform = `"Windows"`
 )
 
 // authExtractJS is evaluated in the sign-in window on an interval. On first run
@@ -67,7 +74,7 @@ return JSON.stringify({accessToken:t.accessToken,accessTokenExpirationTimestampM
 // Provider is the Spotify musicsource adapter. The zero value is not usable;
 // call New.
 type Provider struct {
-	http     *http.Client
+	http     httpDoer
 	apiBase  string
 	loginURL string
 }
@@ -338,6 +345,17 @@ func (p *Provider) get(ctx context.Context, t token, path string, q url.Values, 
 		req.Header.Set("Accept-Language", "en")
 		req.Header.Set("User-Agent", userAgent)
 		req.Header.Set("App-Platform", "WebPlayer")
+		// Present as the web player running under open.spotify.com. Spotify's
+		// edge scores these browser signals alongside the TLS fingerprint when
+		// deciding whether to 429 a request.
+		req.Header.Set("Origin", "https://open.spotify.com")
+		req.Header.Set("Referer", "https://open.spotify.com/")
+		req.Header.Set("Sec-Fetch-Dest", "empty")
+		req.Header.Set("Sec-Fetch-Mode", "cors")
+		req.Header.Set("Sec-Fetch-Site", "same-site")
+		req.Header.Set("Sec-CH-UA", secCHUA)
+		req.Header.Set("Sec-CH-UA-Mobile", secCHUAMobile)
+		req.Header.Set("Sec-CH-UA-Platform", secCHUAPlatform)
 		if t.ClientToken != "" {
 			// Spotify throttles api.spotify.com far harder for requests
 			// without the web player's client token.
