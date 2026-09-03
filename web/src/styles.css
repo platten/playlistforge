@@ -867,80 +867,6 @@ select {
   color: var(--text);
 }
 
-/* ----------------------------------------------------------------------------
- * History
- * ------------------------------------------------------------------------- */
-.history-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-  margin-top: 2.8rem;
-}
-.history-card {
-  display: flex;
-  flex-direction: column;
-  min-height: 236px;
-  padding: 1.4rem;
-  text-align: left;
-  color: inherit;
-  cursor: pointer;
-  overflow: hidden;
-  transition:
-    transform 0.18s var(--ease),
-    border-color 0.18s var(--ease),
-    box-shadow 0.18s var(--ease);
-}
-.history-card::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 5px;
-  background: linear-gradient(
-    90deg,
-    var(--accent),
-    var(--coral) 55%,
-    var(--accent-text)
-  );
-  opacity: 0.75;
-}
-.history-card:hover {
-  transform: translateY(-3px);
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-3);
-}
-.history-card h2,
-.history-card h3 {
-  margin: 1.6rem 0 0.5rem;
-  font-size: 1.5rem;
-  font-weight: 420;
-  font-variation-settings:
-    "opsz" 40,
-    "SOFT" 30;
-}
-.history-card p {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.88rem;
-  line-height: 1.5;
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
-  -webkit-box-orient: vertical;
-}
-.history-card > span:last-child {
-  margin-top: auto;
-  padding-top: 1rem;
-}
-.history-card > span:last-child,
-.history-count {
-  color: var(--text-dim);
-  font-family: var(--font-mono);
-  font-size: 0.66rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-}
-
 .empty {
   margin-top: 2.8rem;
   padding: 2.4rem;
@@ -1546,11 +1472,11 @@ dd {
   text-transform: uppercase;
   letter-spacing: 0.11em;
 }
-.history-card .source-badges {
-  margin: 0.85rem 0 0;
+.browse-row .source-badges {
+  margin-top: 0.15rem;
 }
 
-/* Cluster grouping in History and Browse. */
+/* Cluster grouping in Browse. */
 .cluster {
   margin-top: 2.6rem;
 }
@@ -1573,9 +1499,6 @@ dd {
   color: var(--text-muted);
   font-size: 0.68rem;
   letter-spacing: 0.06em;
-}
-.cluster .history-grid {
-  margin-top: 1rem;
 }
 
 /* Seeded reference chips in the composer. */
@@ -1663,10 +1586,10 @@ h1.settings-section {
 }
 
 /* ----------------------------------------------------------------------------
- * Browse — clustered picker
+ * Browse — library + reference picker
  * ------------------------------------------------------------------------- */
 .browse-list {
-  max-height: min(60vh, 640px);
+  max-height: min(62vh, 680px);
   margin-top: 1.6rem;
   padding-right: 0.4rem;
   overflow-y: auto;
@@ -1686,24 +1609,36 @@ h1.settings-section {
 .browse-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
+  align-items: start;
   gap: 0.9rem;
   padding: 0.85rem 1.1rem;
-  cursor: pointer;
 }
 .browse-row:hover {
   background: var(--surface-2);
 }
-.browse-row input {
+.browse-row > input {
   width: 1rem;
   height: 1rem;
+  margin-top: 0.15rem;
   accent-color: var(--accent);
 }
-.browse-row-main {
+.browse-row-open {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.25rem;
   min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.browse-row-open:hover .browse-row-title,
+.browse-row-open:focus-visible .browse-row-title {
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
 }
 .browse-row-title {
   font-size: 0.95rem;
@@ -1715,6 +1650,16 @@ h1.settings-section {
   font-size: 0.66rem;
   text-transform: uppercase;
   letter-spacing: 0.09em;
+}
+.browse-row-desc {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 .browse-footer {
   position: sticky;
@@ -1795,9 +1740,6 @@ h1.settings-section {
   .composer {
     max-width: 720px;
   }
-  .history-grid {
-    grid-template-columns: 1fr 1fr;
-  }
   .settings-grid {
     grid-template-columns: 1fr;
   }
@@ -1841,7 +1783,6 @@ h1.settings-section {
     flex-direction: column;
   }
   .field-row,
-  .history-grid,
   .actions-column {
     grid-template-columns: 1fr;
   }

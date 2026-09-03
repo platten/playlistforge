@@ -11,8 +11,8 @@
  *     tiny History-API router, and exposes `run()` — the single lifecycle every
  *     paid operation goes through so the busy overlay, refresh, and error
  *     handling never drift between views;
- *   - the page components (`CreatePage`, `BrowsePage`, `HistoryPage`,
- *     `SettingsPage`, `PlaylistPage`) and the row-level pieces they use.
+ *   - the page components (`CreatePage`, `BrowsePage`, `SettingsPage`,
+ *     `PlaylistPage`) and the row-level pieces they use.
  *
  * All backend access is the typed adapter in `./api`; jobs are polled through
  * `waitForJob`. Split a page into its own file once it grows independent state
@@ -40,8 +40,7 @@ import type {
 } from "./types";
 
 type Route =
-  | { page: "home" | "history" | "settings" | "browse" }
-  | { page: "playlist"; id: string };
+  { page: "home" | "settings" | "browse" } | { page: "playlist"; id: string };
 
 type Theme = "light" | "dark";
 
@@ -54,10 +53,10 @@ const SERVICES: { kind: string; label: string }[] = [
 const serviceLabel = (kind: string) =>
   SERVICES.find((s) => s.kind === kind)?.label ?? kind;
 
-// The History and Browse views group playlists so a record shows once, in one
-// place: things forged here, then each streaming service. A playlist with more
-// than one home (forged here and also on TIDAL, say) lands in the first that
-// applies and carries a badge for every source.
+// Browse groups playlists so a record shows once, in one place: things forged
+// here, then each streaming service. A playlist with more than one home (forged
+// here and also on TIDAL, say) lands in the first that applies and carries a
+// badge for every source.
 type ClusterKey = "created" | "tidal" | "qobuz";
 const CLUSTERS: { key: ClusterKey; label: string }[] = [
   { key: "created", label: "Forged here" },
@@ -302,7 +301,6 @@ function parseRoute(): Route {
   // adding a routing dependency to the runtime bundle.
   const match = window.location.pathname.match(/^\/playlists\/([^/]+)$/);
   if (match) return { page: "playlist", id: decodeURIComponent(match[1]) };
-  if (window.location.pathname === "/history") return { page: "history" };
   if (window.location.pathname === "/settings") return { page: "settings" };
   if (window.location.pathname === "/browse") return { page: "browse" };
   return { page: "home" };
@@ -448,12 +446,6 @@ export default function App() {
               Browse
             </button>
             <button
-              onClick={() => navigate("/history")}
-              aria-current={route.page === "history" ? "page" : undefined}
-            >
-              History
-            </button>
-            <button
               onClick={() => navigate("/settings")}
               aria-current={route.page === "settings" ? "page" : undefined}
             >
@@ -516,14 +508,6 @@ export default function App() {
               connections={connections}
               syncSource={syncSource}
               onUseAsInspiration={applyInspiration}
-              navigate={navigate}
-            />
-          )}
-          {route.page === "history" && (
-            <HistoryPage
-              history={history}
-              connections={connections}
-              syncSource={syncSource}
               navigate={navigate}
             />
           )}
@@ -727,86 +711,9 @@ function CreatePage({
 }
 
 /**
- * The library grid. Each card links to a playlist; an empty state points back
- * to Create. Reads `history` from the shell — it is refreshed after every
- * operation.
- */
-function HistoryPage({
-  history,
-  connections,
-  syncSource,
-  navigate,
-}: {
-  history: Playlist[];
-  connections: ConnectionStatus[];
-  syncSource: (kind: string) => void;
-  navigate: (path: string) => void;
-}) {
-  const groups = groupByCluster(history);
-  return (
-    <section className="page">
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">Your library</p>
-          <h1>Playlist history</h1>
-          <p className="lede compact">
-            Everything you can draw on: playlists forged here and read-only
-            mirrors of what already lives on your streaming services.
-          </p>
-        </div>
-        <ReloadControls connections={connections} syncSource={syncSource} />
-      </div>
-      {history.length === 0 ? (
-        <div className="empty card">
-          <h2>No playlists yet</h2>
-          <p>
-            Forge one from a brief, or connect a streaming service in Settings
-            to mirror the playlists you already have.
-          </p>
-          <button className="button primary" onClick={() => navigate("/")}>
-            Create one
-          </button>
-        </div>
-      ) : (
-        CLUSTERS.filter((cluster) => groups[cluster.key].length > 0).map(
-          (cluster) => (
-            <div className="cluster" key={cluster.key}>
-              <h2 className="cluster-heading">
-                {cluster.label}
-                <span>{groups[cluster.key].length}</span>
-              </h2>
-              <div className="history-grid">
-                {groups[cluster.key].map((item) => (
-                  <button
-                    className="history-card card"
-                    key={item.id}
-                    onClick={() => navigate(`/playlists/${item.id}`)}
-                  >
-                    <span className="history-count">
-                      {trackList(item).length} tracks
-                    </span>
-                    <h3>{item.currentRevision.title}</h3>
-                    <p>{item.currentRevision.description}</p>
-                    <SourceBadges item={item} />
-                    <span>
-                      Revision {item.revisionCount} ·{" "}
-                      {new Date(item.updatedAt).toLocaleDateString()}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ),
-        )
-      )}
-    </section>
-  );
-}
-
-/**
- * The per-service Reload buttons shared by History and Browse. Only connected
- * services appear; the sync runs as a background job, so progress and
- * cancellation live in the shared busy overlay rather than here.
+ * The per-service Reload buttons in Browse. Only connected services appear; the
+ * sync runs as a background job, so progress and cancellation live in the
+ * shared busy overlay rather than here.
  */
 function ReloadControls({
   connections,
@@ -833,10 +740,10 @@ function ReloadControls({
 }
 
 /**
- * The clustered picker. Every playlist appears once — under "Forged here" or the
- * first service it is linked to — with a checkbox and a badge per source. Each
- * connected service gets a Reload; the sticky footer carries the current
- * selection into the composer's reference list.
+ * The library and reference picker. Every playlist appears once — under "Forged
+ * here" or the first service it is linked to. Its title opens the full playlist
+ * view (a preview); its checkbox adds it to the sticky footer's selection, which
+ * seeds the composer's reference list. Each connected service gets a Reload.
  */
 function BrowsePage({
   history,
@@ -862,11 +769,12 @@ function BrowsePage({
     <section className="page browse-page">
       <div className="page-heading">
         <div>
-          <p className="eyebrow">Pick your references</p>
+          <p className="eyebrow">Your library</p>
           <h1>Browse all playlists</h1>
           <p className="lede compact">
-            Choose any mix of playlists — forged here or mirrored from a service
-            — to seed the composer's inspiration list.
+            Everything you can draw on — playlists forged here and read-only
+            mirrors of what lives on your streaming services. Open one to
+            preview it, or select any to seed the composer.
           </p>
         </div>
         <ReloadControls connections={connections} syncSource={syncSource} />
@@ -874,10 +782,10 @@ function BrowsePage({
 
       {history.length === 0 ? (
         <div className="empty card">
-          <h2>Nothing to browse yet</h2>
+          <h2>No playlists yet</h2>
           <p>
-            Forge a playlist, or connect TIDAL or Qobuz in Settings to mirror
-            the ones you already have.
+            Forge one from a brief, or connect TIDAL or Qobuz in Settings to
+            mirror the ones you already have.
           </p>
           <button className="button primary" onClick={() => navigate("/")}>
             Back to Create
@@ -895,24 +803,32 @@ function BrowsePage({
                   </h2>
                   <ul className="browse-cluster">
                     {groups[cluster.key].map((item) => (
-                      <li key={item.id}>
-                        <label className="browse-row">
-                          <input
-                            type="checkbox"
-                            checked={selected.includes(item.id)}
-                            onChange={() => toggle(item.id)}
-                          />
-                          <span className="browse-row-main">
-                            <span className="browse-row-title">
-                              {item.currentRevision.title}
-                            </span>
-                            <span className="browse-row-meta">
-                              {trackList(item).length} tracks · updated{" "}
-                              {new Date(item.updatedAt).toLocaleDateString()}
-                            </span>
+                      <li key={item.id} className="browse-row">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${item.currentRevision.title}`}
+                          checked={selected.includes(item.id)}
+                          onChange={() => toggle(item.id)}
+                        />
+                        <button
+                          type="button"
+                          className="browse-row-open"
+                          onClick={() => navigate(`/playlists/${item.id}`)}
+                        >
+                          <span className="browse-row-title">
+                            {item.currentRevision.title}
                           </span>
-                          <SourceBadges item={item} />
-                        </label>
+                          <span className="browse-row-meta">
+                            {trackList(item).length} tracks · updated{" "}
+                            {new Date(item.updatedAt).toLocaleDateString()}
+                          </span>
+                          {item.currentRevision.description && (
+                            <span className="browse-row-desc">
+                              {item.currentRevision.description}
+                            </span>
+                          )}
+                        </button>
+                        <SourceBadges item={item} />
                       </li>
                     ))}
                   </ul>
@@ -1280,8 +1196,8 @@ function PlaylistPage({
   const readOnly = item.origin === "imported";
   return (
     <section className="page playlist-page">
-      <button className="back-link" onClick={() => navigate("/history")}>
-        ← History
+      <button className="back-link" onClick={() => navigate("/browse")}>
+        ← Browse
       </button>
       <div className="playlist-heading">
         <div>
