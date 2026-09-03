@@ -12,7 +12,7 @@ import (
 
 // connectableKinds is the fixed set of streaming services the UI offers, in
 // display order.
-var connectableKinds = []musicsource.Kind{musicsource.KindTIDAL, musicsource.KindQobuz}
+var connectableKinds = []musicsource.Kind{musicsource.KindTIDAL, musicsource.KindQobuz, musicsource.KindSpotify}
 
 // ConnectionStatus is the non-secret state of one streaming service.
 type ConnectionStatus struct {

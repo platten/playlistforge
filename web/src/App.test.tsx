@@ -54,6 +54,12 @@ function installBindings() {
       Promise.resolve([
         { kind: "tidal", available: false, connected: false, displayName: "" },
         { kind: "qobuz", available: false, connected: false, displayName: "" },
+        {
+          kind: "spotify",
+          available: false,
+          connected: false,
+          displayName: "",
+        },
       ]),
     ),
     ConnectService: vi.fn(() =>
@@ -374,6 +380,37 @@ describe("App", () => {
       await screen.findByRole("button", { name: /forge playlist/i }),
     ).toBeInTheDocument();
     expect(screen.getByText("TIDAL favourites")).toBeInTheDocument();
+  });
+
+  it("groups a Spotify import under its own Browse cluster", async () => {
+    bindings.ListPlaylists.mockResolvedValue([
+      {
+        id: "sp",
+        createdAt: "2026-09-01T00:00:00Z",
+        updatedAt: "2026-09-01T00:00:00Z",
+        revisionCount: 1,
+        origin: "imported",
+        sources: [
+          {
+            kind: "spotify",
+            url: "https://open.spotify.com/playlist/sp",
+            syncedAt: "2026-09-01T00:00:00Z",
+            externalId: "sp",
+          },
+        ],
+        currentRevision: revision("Spotify mix"),
+      },
+    ]);
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Browse" }));
+    expect(
+      await screen.findByRole("heading", { name: /Spotify/, level: 2 }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Spotify mix")).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /Select Spotify mix/ }),
+    ).toBeInTheDocument();
   });
 
   it("opens a playlist preview from a Browse row", async () => {

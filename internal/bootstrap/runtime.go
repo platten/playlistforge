@@ -18,6 +18,7 @@ import (
 	"playlistforge/internal/logging"
 	"playlistforge/internal/musicsource"
 	"playlistforge/internal/musicsource/qobuz"
+	"playlistforge/internal/musicsource/spotify"
 	"playlistforge/internal/musicsource/tidal"
 	"playlistforge/internal/openaiapi"
 	"playlistforge/internal/soundiiz"
@@ -68,11 +69,12 @@ func New(options Options) (*Runtime, error) {
 		return nil, err
 	}
 	keys := credentials.New(configDir)
-	// Reverse-engineered adapters for the two services Playlist Forge can import
-	// from. Both use community client credentials and undocumented endpoints.
+	// Reverse-engineered adapters for the services Playlist Forge can import
+	// from. All use community credentials and undocumented endpoints.
 	sources := musicsource.Registry{
-		musicsource.KindTIDAL: tidal.New(),
-		musicsource.KindQobuz: qobuz.New(),
+		musicsource.KindTIDAL:   tidal.New(),
+		musicsource.KindQobuz:   qobuz.New(),
+		musicsource.KindSpotify: spotify.New(),
 	}
 	service := app.New(ctx, repo, openaiapi.New(keys, logger), soundiiz.New(), connections.New(configDir), sources, logger)
 	return &Runtime{

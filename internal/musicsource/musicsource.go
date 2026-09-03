@@ -18,12 +18,15 @@ import (
 type Kind string
 
 const (
-	KindTIDAL Kind = "tidal"
-	KindQobuz Kind = "qobuz"
+	KindTIDAL   Kind = "tidal"
+	KindQobuz   Kind = "qobuz"
+	KindSpotify Kind = "spotify"
 )
 
 // Valid reports whether k is a supported service.
-func (k Kind) Valid() bool { return k == KindTIDAL || k == KindQobuz }
+func (k Kind) Valid() bool {
+	return k == KindTIDAL || k == KindQobuz || k == KindSpotify
+}
 
 // ErrNotConnected is returned by callers when no session exists for a service.
 var ErrNotConnected = errors.New("streaming service is not connected")

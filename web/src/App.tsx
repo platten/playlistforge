@@ -49,6 +49,7 @@ type Theme = "light" | "dark";
 const SERVICES: { kind: string; label: string }[] = [
   { kind: "tidal", label: "TIDAL" },
   { kind: "qobuz", label: "Qobuz" },
+  { kind: "spotify", label: "Spotify" },
 ];
 const serviceLabel = (kind: string) =>
   SERVICES.find((s) => s.kind === kind)?.label ?? kind;
@@ -57,16 +58,18 @@ const serviceLabel = (kind: string) =>
 // here, then each streaming service. A playlist with more than one home (forged
 // here and also on TIDAL, say) lands in the first that applies and carries a
 // badge for every source.
-type ClusterKey = "created" | "tidal" | "qobuz";
+type ClusterKey = "created" | "tidal" | "qobuz" | "spotify";
 const CLUSTERS: { key: ClusterKey; label: string }[] = [
   { key: "created", label: "Forged here" },
   { key: "tidal", label: "TIDAL" },
   { key: "qobuz", label: "Qobuz" },
+  { key: "spotify", label: "Spotify" },
 ];
 
 function clusterOf(item: Playlist): ClusterKey {
   if (item.origin === "generated") return "created";
-  return item.sources?.[0]?.kind === "qobuz" ? "qobuz" : "tidal";
+  const kind = item.sources?.[0]?.kind;
+  return kind === "qobuz" || kind === "spotify" ? kind : "tidal";
 }
 
 function groupByCluster(history: Playlist[]): Record<ClusterKey, Playlist[]> {
@@ -74,6 +77,7 @@ function groupByCluster(history: Playlist[]): Record<ClusterKey, Playlist[]> {
     created: [],
     tidal: [],
     qobuz: [],
+    spotify: [],
   };
   for (const item of history) groups[clusterOf(item)].push(item);
   return groups;

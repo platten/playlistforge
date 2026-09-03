@@ -67,14 +67,17 @@ func TestConnectionsLifecycle(t *testing.T) {
 	svc := newConnService(t, sessions, musicsource.Registry{musicsource.KindTIDAL: tidal})
 
 	status := svc.Connections()
-	if len(status) != 2 {
-		t.Fatalf("want 2 services, got %d", len(status))
+	if len(status) != 3 {
+		t.Fatalf("want 3 services, got %d", len(status))
 	}
 	if !status[0].Available || status[0].Connected || status[0].Kind != "tidal" {
 		t.Fatalf("tidal before connect: %+v", status[0])
 	}
 	if status[1].Available || status[1].Kind != "qobuz" {
 		t.Fatalf("qobuz should be unavailable: %+v", status[1])
+	}
+	if status[2].Available || status[2].Kind != "spotify" {
+		t.Fatalf("spotify should be unavailable: %+v", status[2])
 	}
 
 	req, err := svc.AuthRequest(musicsource.KindTIDAL)

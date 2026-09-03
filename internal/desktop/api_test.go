@@ -91,7 +91,7 @@ func TestStreamingMethods(t *testing.T) {
 	t.Cleanup(svc.Close)
 
 	api := New(context.Background(), svc, &fakeKeys{}, fakeValidator{}, nil, nil)
-	if status := api.Connections(); len(status) != 2 || status[0].Connected || status[0].Available {
+	if status := api.Connections(); len(status) != 3 || status[0].Connected || status[0].Available {
 		t.Fatalf("connections: %+v", status)
 	}
 	if _, err := api.ConnectService("tidal"); err == nil {
