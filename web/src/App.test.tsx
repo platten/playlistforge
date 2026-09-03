@@ -295,42 +295,27 @@ describe("App", () => {
     ]);
 
     render(<App />);
-    // The composer's reference picker: "Aurora" appears once, the import is gone.
-    await screen.findByLabelText(/what should this playlist feel/i);
-    expect(screen.getAllByRole("checkbox", { name: /Aurora/ })).toHaveLength(1);
-    expect(
-      screen.getByRole("checkbox", { name: /Borealis/ }),
-    ).toBeInTheDocument();
-
-    // Browse hides it too.
-    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
+    // Browse shows "Aurora" once — the imported twin is folded into the forged
+    // record — and "Borealis" (no forged twin) still appears.
+    fireEvent.click(await screen.findByRole("button", { name: "Browse" }));
     expect(await screen.findAllByText("Aurora")).toHaveLength(1);
+    expect(screen.getByText("Borealis")).toBeInTheDocument();
   });
 
-  it("caps the composer picker at 8, forged-here playlists first", async () => {
-    const items = [
-      ...Array.from({ length: 8 }, (_, i) =>
-        playlist(`imp-${i}`, `Import ${i}`, "imported", "tidal"),
-      ),
+  it("does not list playlists on the Create page", async () => {
+    bindings.ListPlaylists.mockResolvedValue([
       playlist("gen-a", "Forged A", "generated"),
-      playlist("gen-b", "Forged B", "generated"),
-    ];
-    bindings.ListPlaylists.mockResolvedValue(items);
+      playlist("imp-a", "Import A", "imported", "tidal"),
+    ]);
 
     render(<App />);
     await screen.findByLabelText(/what should this playlist feel/i);
-    const checks = screen.getAllByRole("checkbox");
-    expect(checks).toHaveLength(8);
+    // The inspiration fieldset is a link into Browse, not an inline checklist.
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+    expect(screen.queryByText("Forged A")).not.toBeInTheDocument();
     expect(
-      screen.getByRole("checkbox", { name: /Forged A/ }),
+      screen.getByRole("button", { name: /browse all playlists/i }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("checkbox", { name: /Forged B/ }),
-    ).toBeInTheDocument();
-    // The two oldest imports were bumped to make room.
-    expect(
-      screen.queryByRole("checkbox", { name: /Import 7/ }),
-    ).not.toBeInTheDocument();
   });
 
   it("clusters Browse selections and seeds them into the composer", async () => {

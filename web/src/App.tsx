@@ -133,15 +133,6 @@ function dedupeByName(history: Playlist[]): Playlist[] {
   );
 }
 
-// The Create screen's inspiration picker is bounded; the rest is reachable
-// through "Browse all playlists".
-const REFERENCE_PICKER_LIMIT = 8;
-
-// Playlists forged here first, then imports, most-recent within each group
-// (history already arrives newest-first, and Array.sort is stable).
-const forgedFirst = (a: Playlist, b: Playlist): number =>
-  (a.origin === "generated" ? 0 : 1) - (b.origin === "generated" ? 0 : 1);
-
 /**
  * Stops a render error in one view from blanking the whole app. React needs a
  * class component for this; it is the only one in the file.
@@ -566,15 +557,10 @@ function CreatePage({
   // Seeded from a Browse selection; the picker below can still add or remove.
   const [references, setReferences] = useState<string[]>(inspirationSeed);
 
-  const pickable = [...history]
-    .sort(forgedFirst)
-    .slice(0, REFERENCE_PICKER_LIMIT);
   const titleOf = (id: string) =>
     history.find((item) => item.id === id)?.currentRevision.title ?? "Playlist";
-  const toggleReference = (id: string, on: boolean) =>
-    setReferences((current) =>
-      on ? [...current, id] : current.filter((ref) => ref !== id),
-    );
+  const removeReference = (id: string) =>
+    setReferences((current) => current.filter((ref) => ref !== id));
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -660,31 +646,24 @@ function CreatePage({
             <legend>
               Use existing playlists as inspiration <span>(optional)</span>
             </legend>
-            {pickable.map((item) => (
-              <label key={item.id}>
-                <input
-                  type="checkbox"
-                  checked={references.includes(item.id)}
-                  onChange={(e) => toggleReference(item.id, e.target.checked)}
-                />
-                <span>{item.currentRevision.title}</span>
-                <SourceBadges item={item} />
-              </label>
-            ))}
-            {references
-              .filter((id) => !pickable.some((item) => item.id === id))
-              .map((id) => (
+            {references.length > 0 ? (
+              references.map((id) => (
                 <span className="reference-chip" key={id}>
                   {titleOf(id)}
                   <button
                     type="button"
                     aria-label={`Remove ${titleOf(id)}`}
-                    onClick={() => toggleReference(id, false)}
+                    onClick={() => removeReference(id)}
                   >
                     ×
                   </button>
                 </span>
-              ))}
+              ))
+            ) : (
+              <p className="references-hint">
+                Pick playlists in Browse to seed this brief.
+              </p>
+            )}
             <button
               type="button"
               className="browse-link"
