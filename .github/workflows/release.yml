@@ -110,13 +110,17 @@ jobs:
           ./scripts/build-desktop.ps1 -SkipTests
           foreach ($arch in @('amd64', 'arm64')) {
             Compress-Archive -Path "build/bin/playlist-forge-$arch.exe" `
-              -DestinationPath "playlist-forge-desktop-windows-$arch.zip"
+              -DestinationPath "build/bin/playlist-forge-desktop-windows-$arch.zip"
           }
       - uses: actions/upload-artifact@v7
         with:
           name: release-desktop-windows
+          # Both globs must share a common parent (build/bin) so upload-artifact
+          # strips it: otherwise the .zip at the repo root pulls the archive
+          # root up and the installers keep a build/bin/ prefix that the publish
+          # job cannot find.
           path: |
-            playlist-forge-desktop-windows-*.zip
+            build/bin/playlist-forge-desktop-windows-*.zip
             build/bin/playlist-forge-*-windows-*-setup.exe
 
   desktop-macos:
