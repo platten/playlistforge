@@ -36,24 +36,28 @@ const (
 	// assumedTokenLife bounds how long a captured token is trusted when the
 	// capture didn't include an expiry.
 	assumedTokenLife = 50 * time.Minute
-	userAgent        = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PlaylistForge/1.0"
+	userAgent        = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 )
 
 // authExtractJS is evaluated in the sign-in window on an interval. On first run
-// it hooks fetch/XHR to catch the web player's own token response; every run it
-// returns {"accessToken":"…","accessTokenExpirationTimestampMs":N} as a string
-// once a token is seen (from the hook or from web storage), else "".
+// it hooks fetch/XHR to catch the web player's own access-token response and
+// its "client-token" request header (Spotify throttles api.spotify.com hard
+// without the latter). Every run it returns
+// {"accessToken":"…","accessTokenExpirationTimestampMs":N,"clientToken":"…"} as
+// a string once an access token is seen (hook or web storage), else "".
 const authExtractJS = `(function(){try{
 if(!window.__pfSpInit){
   window.__pfSpInit=1;
-  var save=function(txt){try{var o=JSON.parse(txt);if(o&&typeof o.accessToken==="string"&&o.accessToken){window.__pfSpTok=JSON.stringify({accessToken:o.accessToken,accessTokenExpirationTimestampMs:o.accessTokenExpirationTimestampMs||0});}}catch(e){}};
+  var save=function(txt){try{var o=JSON.parse(txt);if(o&&typeof o.accessToken==="string"&&o.accessToken){window.__pfSpTok={accessToken:o.accessToken,exp:o.accessTokenExpirationTimestampMs||0};}}catch(e){}};
   var isTok=function(u){u=""+u;return u.indexOf("api/token")>-1||u.indexOf("get_access_token")>-1;};
-  try{var of=window.fetch;if(of){window.fetch=function(){var a=arguments;return of.apply(this,a).then(function(r){try{if(isTok((a[0]&&a[0].url)||a[0]||"")){r.clone().text().then(save);}}catch(e){}return r;});};}}catch(e){}
-  try{var OX=window.XMLHttpRequest;if(OX){window.XMLHttpRequest=function(){var x=new OX();var ou=x.open;x.open=function(m,u){this.__pfu=""+u;return ou.apply(this,arguments);};x.addEventListener("load",function(){try{if(this.__pfu&&isTok(this.__pfu)){save(this.responseText);}}catch(e){}});return x;};}}catch(e){}
+  var grabCT=function(a){try{if(window.__pfSpCT)return;var h=(a&&a[1]&&a[1].headers)||(a&&a[0]&&a[0].headers);if(!h)return;var v="";if(typeof h.get==="function"){v=h.get("client-token")||h.get("Client-Token")||"";}else{for(var k in h){if(String(k).toLowerCase()==="client-token"){v=h[k];break;}}}if(v)window.__pfSpCT=String(v);}catch(e){}};
+  try{var of=window.fetch;if(of){window.fetch=function(){var a=arguments;grabCT(a);return of.apply(this,a).then(function(r){try{if(isTok((a[0]&&a[0].url)||a[0]||"")){r.clone().text().then(save);}}catch(e){}return r;});};}}catch(e){}
+  try{var OX=window.XMLHttpRequest;if(OX){window.XMLHttpRequest=function(){var x=new OX();var ou=x.open,os=x.setRequestHeader;x.open=function(m,u){this.__pfu=""+u;return ou.apply(this,arguments);};x.setRequestHeader=function(n,v){try{if(String(n).toLowerCase()==="client-token"&&v&&!window.__pfSpCT){window.__pfSpCT=String(v);}}catch(e){}return os.apply(this,arguments);};x.addEventListener("load",function(){try{if(this.__pfu&&isTok(this.__pfu)){save(this.responseText);}}catch(e){}});return x;};}}catch(e){}
 }
-if(window.__pfSpTok){return window.__pfSpTok;}
-var scan=function(store){try{for(var i=0;i<store.length;i++){var raw=store.getItem(store.key(i));if(!raw||raw.indexOf("accessToken")<0){continue;}try{var o=JSON.parse(raw);if(o&&typeof o.accessToken==="string"&&o.accessToken){return JSON.stringify({accessToken:o.accessToken,accessTokenExpirationTimestampMs:o.accessTokenExpirationTimestampMs||0});}}catch(e){}}}catch(e){}return "";};
-return scan(window.localStorage)||scan(window.sessionStorage)||"";
+var t=window.__pfSpTok;
+if(!t){var scan=function(store){try{for(var i=0;i<store.length;i++){var raw=store.getItem(store.key(i));if(!raw||raw.indexOf("accessToken")<0){continue;}try{var o=JSON.parse(raw);if(o&&typeof o.accessToken==="string"&&o.accessToken){return {accessToken:o.accessToken,exp:o.accessTokenExpirationTimestampMs||0};}}catch(e){}}}catch(e){}return null;};t=scan(window.localStorage)||scan(window.sessionStorage);}
+if(!t){return "";}
+return JSON.stringify({accessToken:t.accessToken,accessTokenExpirationTimestampMs:t.exp,clientToken:window.__pfSpCT||""});
 }catch(e){return "";}})()`
 
 // Provider is the Spotify musicsource adapter. The zero value is not usable;
@@ -79,6 +83,7 @@ func (p *Provider) Kind() musicsource.Kind { return musicsource.KindSpotify }
 // token is the JSON persisted in musicsource.Session.Raw.
 type token struct {
 	AccessToken string `json:"accessToken"`
+	ClientToken string `json:"clientToken,omitempty"`
 	UserID      string `json:"userId"`
 }
 
@@ -97,6 +102,7 @@ func (p *Provider) AuthRequest() (musicsource.AuthRequest, error) {
 type capturedToken struct {
 	AccessToken      string `json:"accessToken"`
 	ExpirationMillis int64  `json:"accessTokenExpirationTimestampMs"`
+	ClientToken      string `json:"clientToken"`
 }
 
 // Complete turns the captured token into a session.
@@ -111,19 +117,21 @@ func (p *Provider) Complete(ctx context.Context, captured string) (musicsource.S
 		return musicsource.Session{}, errors.New("Spotify sign-in returned no access token")
 	}
 
+	t := token{AccessToken: ct.AccessToken, ClientToken: ct.ClientToken}
+
 	// Only a definitive 401 means the capture is bad; a 429 or a network
 	// hiccup on this one cosmetic call must not sink an otherwise-good sign-in
 	// (Spotify rate-limits the web-player token hard right after the player's
 	// own boot burst).
-	me, err := p.currentUser(ctx, ct.AccessToken)
+	me, err := p.currentUser(ctx, t)
 	if errors.Is(err, musicsource.ErrNotConnected) {
 		return musicsource.Session{}, errors.New("Spotify sign-in captured an invalid token")
 	}
 
 	expiry := time.Now().Add(assumedTokenLife)
 	if ct.ExpirationMillis > 0 {
-		if t := time.UnixMilli(ct.ExpirationMillis); t.After(time.Now()) {
-			expiry = t
+		if exp := time.UnixMilli(ct.ExpirationMillis); exp.After(time.Now()) {
+			expiry = exp
 		}
 	}
 	display := me.DisplayName
@@ -134,7 +142,8 @@ func (p *Provider) Complete(ctx context.Context, captured string) (musicsource.S
 		display = "Spotify listener"
 	}
 
-	raw, err := json.Marshal(token{AccessToken: ct.AccessToken, UserID: me.ID})
+	t.UserID = me.ID
+	raw, err := json.Marshal(t)
 	if err != nil {
 		return musicsource.Session{}, err
 	}
@@ -158,12 +167,12 @@ type spotifyUser struct {
 	DisplayName string `json:"display_name"`
 }
 
-func (p *Provider) currentUser(ctx context.Context, accessToken string) (spotifyUser, error) {
+func (p *Provider) currentUser(ctx context.Context, t token) (spotifyUser, error) {
 	// Cosmetic (display name only) and best-effort, so keep it short.
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	var me spotifyUser
-	if err := p.get(ctx, accessToken, "/me", nil, &me); err != nil {
+	if err := p.get(ctx, t, "/me", nil, &me); err != nil {
 		return spotifyUser{}, err
 	}
 	return me, nil
@@ -195,7 +204,7 @@ func (p *Provider) ListPlaylists(ctx context.Context, s musicsource.Session) ([]
 				} `json:"external_urls"`
 			} `json:"items"`
 		}
-		if err := p.get(ctx, t.AccessToken, "/me/playlists", q, &page); err != nil {
+		if err := p.get(ctx, t, "/me/playlists", q, &page); err != nil {
 			return nil, fmt.Errorf("list Spotify playlists: %w", err)
 		}
 		for _, it := range page.Items {
@@ -244,7 +253,7 @@ func (p *Provider) PlaylistTracks(ctx context.Context, s musicsource.Session, ex
 				Track *spotifyTrack `json:"track"`
 			} `json:"items"`
 		}
-		if err := p.get(ctx, t.AccessToken, path, q, &page); err != nil {
+		if err := p.get(ctx, t, path, q, &page); err != nil {
 			return nil, fmt.Errorf("read Spotify playlist tracks: %w", err)
 		}
 		for _, it := range page.Items {
@@ -310,7 +319,7 @@ func decode(s musicsource.Session) (token, error) {
 	return t, nil
 }
 
-func (p *Provider) get(ctx context.Context, accessToken, path string, q url.Values, out any) error {
+func (p *Provider) get(ctx context.Context, t token, path string, q url.Values, out any) error {
 	endpoint := p.apiBase + path
 	if len(q) > 0 {
 		endpoint += "?" + q.Encode()
@@ -320,10 +329,16 @@ func (p *Provider) get(ctx context.Context, accessToken, path string, q url.Valu
 		if err != nil {
 			return err
 		}
-		req.Header.Set("Authorization", "Bearer "+accessToken)
+		req.Header.Set("Authorization", "Bearer "+t.AccessToken)
 		req.Header.Set("Accept", "application/json")
+		req.Header.Set("Accept-Language", "en")
 		req.Header.Set("User-Agent", userAgent)
 		req.Header.Set("App-Platform", "WebPlayer")
+		if t.ClientToken != "" {
+			// Spotify throttles api.spotify.com far harder for requests
+			// without the web player's client token.
+			req.Header.Set("Client-Token", t.ClientToken)
+		}
 
 		resp, err := p.http.Do(req)
 		if err != nil {

@@ -23,7 +23,7 @@ func newTestProvider(t *testing.T, mux *http.ServeMux) *Provider {
 }
 
 func session(accessToken, userID string) musicsource.Session {
-	raw, _ := json.Marshal(token{AccessToken: accessToken, UserID: userID})
+	raw, _ := json.Marshal(token{AccessToken: accessToken, ClientToken: "ct-" + accessToken, UserID: userID})
 	return musicsource.Session{Kind: musicsource.KindSpotify, Raw: raw}
 }
 
@@ -56,7 +56,7 @@ func TestCompleteFromTokenBlob(t *testing.T) {
 	p := newTestProvider(t, mux)
 
 	exp := time.Now().Add(time.Hour).UnixMilli()
-	captured := `{"accessToken":"access-1","accessTokenExpirationTimestampMs":` + strconv.FormatInt(exp, 10) + `}`
+	captured := `{"accessToken":"access-1","accessTokenExpirationTimestampMs":` + strconv.FormatInt(exp, 10) + `,"clientToken":"ct-xyz"}`
 	s, err := p.Complete(context.Background(), captured)
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
@@ -71,8 +71,22 @@ func TestCompleteFromTokenBlob(t *testing.T) {
 	if err := json.Unmarshal(s.Raw, &tok); err != nil {
 		t.Fatalf("decode raw: %v", err)
 	}
-	if tok.AccessToken != "access-1" || tok.UserID != "jane" {
+	if tok.AccessToken != "access-1" || tok.UserID != "jane" || tok.ClientToken != "ct-xyz" {
 		t.Fatalf("token = %+v", tok)
+	}
+}
+
+func TestGetSendsClientTokenHeader(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/me/playlists", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Client-Token") != "ct-tok" || r.Header.Get("App-Platform") != "WebPlayer" {
+			t.Fatalf("missing web-player headers: %v", r.Header)
+		}
+		writeJSON(w, map[string]any{"total": 0, "items": []any{}})
+	})
+	p := newTestProvider(t, mux)
+	if _, err := p.ListPlaylists(context.Background(), session("tok", "me")); err != nil {
+		t.Fatalf("ListPlaylists: %v", err)
 	}
 }
 
