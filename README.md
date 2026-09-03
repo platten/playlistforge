@@ -14,10 +14,7 @@ operating system's native webview. There is no server, no bundled runtime, and n
 database service — just an executable and a local SQLite file.
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: light)" srcset="docs/screenshot-light.webp" />
-    <img src="docs/screenshot.webp" width="820" alt="Playlist Forge on the Create screen: the brief composer beside the editorial hero." />
-  </picture>
+  <img src="docs/screenshot.webp" width="820" alt="A finished playlist in Playlist Forge: a title, a description of its sequenced arc, a cost estimate, and a tracklist where each track carries a rationale and a recording note." />
 </p>
 
 ---
