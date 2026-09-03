@@ -56,9 +56,10 @@ both x86-64 and ARM64.
 
 | Platform | Artifact | Notes |
 | --- | --- | --- |
-| Windows | `playlist-forge-<version>-windows-<arch>-setup.exe` | NSIS installer for x64 or ARM64; suitable for Winget. Portable `.zip` builds are also available. |
+| Windows | `playlist-forge-<version>-windows-<arch>-setup.exe` | NSIS installer for x64 or ARM64; suitable for Winget. |
+| Windows (portable) | `playlist-forge-<version>-windows-<arch>.exe` | The standalone application. No installation — download and run it. |
 | macOS | `playlist-forge.app` (universal) | Intel and Apple Silicon in one bundle. |
-| Linux | `.deb`, `.rpm`, `.AppImage` (per architecture) | Needs GTK 3 and WebKitGTK 4.1; the `.deb`/`.rpm` declare this. |
+| Linux | `.deb`, `.rpm`, `.AppImage` (per architecture) | Needs GTK 3 and WebKitGTK 4.1; the `.deb`/`.rpm` declare this. The `.AppImage` is portable. |
 
 Release builds are currently unsigned. Configure Windows code-signing and an
 Apple Developer ID / notarization identity before distributing them as a
@@ -181,8 +182,10 @@ pwsh -File scripts/build-desktop.ps1   # Windows
 Artifacts land in `build/bin`. On Linux the build targets the host architecture
 and produces the `.deb`, `.rpm`, and `.AppImage`; macOS produces the universal
 `playlist-forge.app`; Windows cross-compiles both architectures and produces
-NSIS installers with silent `/S` install and uninstall support. Pass
-`-SkipInstaller` when NSIS packaging is not needed. The product version comes
+the standalone `playlist-forge-<arch>.exe` plus NSIS installers with silent
+`/S` install and uninstall support (the release job also publishes the exe as
+`playlist-forge-<version>-windows-<arch>.exe`). Pass `-SkipInstaller` when NSIS
+packaging is not needed. The product version comes
 from the `VERSION` file. `build/appicon.svg` is the icon
 master; `build/appicon.png`, `build/darwin/icons.icns`, and
 `build/windows/icon.ico` are generated from it.

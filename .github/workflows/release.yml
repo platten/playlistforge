@@ -9,9 +9,6 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   quality:
     runs-on: ubuntu-latest
@@ -20,13 +17,11 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/setup@v1
         with:
           version: 11.19.0
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
+          runtime: node@24
+          cache: true
           cache-dependency-path: web/pnpm-lock.yaml
       - uses: actions/setup-go@v7
         with:
@@ -53,13 +48,11 @@ jobs:
             arch: arm64
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/setup@v1
         with:
           version: 11.19.0
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
+          runtime: node@24
+          cache: true
           cache-dependency-path: web/pnpm-lock.yaml
       - uses: actions/setup-go@v7
         with:
@@ -88,13 +81,11 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/setup@v1
         with:
           version: 11.19.0
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
+          runtime: node@24
+          cache: true
           cache-dependency-path: web/pnpm-lock.yaml
       - uses: actions/setup-go@v7
         with:
@@ -102,26 +93,27 @@ jobs:
           cache-dependency-path: go.sum
       - name: Install NSIS
         run: choco install nsis --yes --no-progress
-      - name: Build and archive the Windows desktop application (amd64 + arm64)
+      - name: Build the Windows desktop application (amd64 + arm64)
         shell: pwsh
         run: |
           $version = $env:GITHUB_REF_NAME.TrimStart('v')
           Set-Content -Path VERSION -Value $version -Encoding ascii
           ./scripts/build-desktop.ps1 -SkipTests
+          # build-desktop.ps1 leaves the raw exe at build/bin/playlist-forge-$arch.exe;
+          # publish it under a versioned name as the standalone portable binary
+          # (no installer, no extraction), alongside the NSIS installer.
           foreach ($arch in @('amd64', 'arm64')) {
-            Compress-Archive -Path "build/bin/playlist-forge-$arch.exe" `
-              -DestinationPath "build/bin/playlist-forge-desktop-windows-$arch.zip"
+            Copy-Item "build/bin/playlist-forge-$arch.exe" `
+              "build/bin/playlist-forge-$version-windows-$arch.exe"
           }
       - uses: actions/upload-artifact@v7
         with:
           name: release-desktop-windows
-          # Both globs must share a common parent (build/bin) so upload-artifact
-          # strips it: otherwise the .zip at the repo root pulls the archive
-          # root up and the installers keep a build/bin/ prefix that the publish
-          # job cannot find.
-          path: |
-            build/bin/playlist-forge-desktop-windows-*.zip
-            build/bin/playlist-forge-*-windows-*-setup.exe
+          # One glob rooted at build/bin so upload-artifact strips the prefix and
+          # every Windows asset lands flat for the publish job. Matches the
+          # portable "<v>-windows-<arch>.exe" and the "<v>-windows-<arch>-setup.exe"
+          # installer, but not the unversioned raw "playlist-forge-<arch>.exe".
+          path: build/bin/playlist-forge-*-windows-*.exe
 
   desktop-macos:
     needs: quality
@@ -131,13 +123,11 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/setup@v1
         with:
           version: 11.19.0
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
+          runtime: node@24
+          cache: true
           cache-dependency-path: web/pnpm-lock.yaml
       - uses: actions/setup-go@v7
         with:
@@ -168,13 +158,16 @@ jobs:
           pattern: release-desktop-*
           path: release
           merge-multiple: true
-      - name: Upload the Windows installers to VirusTotal
+      - name: Upload the Windows binaries to VirusTotal
         env:
           VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
         shell: bash
         run: |
-          bash scripts/upload-virustotal.sh "release/playlist-forge-${GITHUB_REF_NAME#v}-windows-amd64-setup.exe"
-          bash scripts/upload-virustotal.sh "release/playlist-forge-${GITHUB_REF_NAME#v}-windows-arm64-setup.exe"
+          version="${GITHUB_REF_NAME#v}"
+          for arch in amd64 arm64; do
+            bash scripts/upload-virustotal.sh "release/playlist-forge-${version}-windows-${arch}.exe"
+            bash scripts/upload-virustotal.sh "release/playlist-forge-${version}-windows-${arch}-setup.exe"
+          done
       - name: Write release checksums
         shell: bash
         run: |
