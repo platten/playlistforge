@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Playlist Forge — turn a sentence into a researched playlist</title>
+  <meta name="description" content="A local-first desktop app that turns a natural-language brief into a researched, intentionally ordered playlist of real recordings — then hands it to TIDAL, Qobuz, Spotify, or Apple Music." />
+  <meta name="theme-color" content="#0b0c09" />
+  <link rel="icon" type="image/png" href="./appicon.png" />
+  <link rel="apple-touch-icon" href="./appicon.png" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Playlist Forge" />
+  <meta property="og:description" content="Turn a sentence into a researched playlist, review every track, and hand it to your streaming service." />
+  <meta property="og:image" content="./appicon.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Playlist Forge" />
+  <meta name="twitter:description" content="Turn a sentence into a researched playlist, review every track, and hand it to your streaming service." />
+  <meta name="twitter:image" content="./appicon.png" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --bg: #0b0c09;
+      --bg-raise: #14160f;
+      --bg-card: #161911;
+      --line: rgba(233, 255, 156, 0.10);
+      --line-strong: rgba(233, 255, 156, 0.18);
+      --ink: #f3f5ea;
+      --ink-dim: #b6bca9;
+      --ink-faint: #8b917f;
+      --lime: #d0f24a;
+      --lime-bright: #e8ff8c;
+      --coral: #ff8b76;
+      --radius: 16px;
+      --maxw: 1080px;
+      --serif: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+      --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 17px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      overflow-x: hidden;
+    }
+
+    a { color: inherit; }
+
+    ::selection { background: var(--lime); color: #0b0c09; }
+
+    .wrap {
+      width: 100%;
+      max-width: var(--maxw);
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ---------- header ---------- */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      background: rgba(11, 12, 9, 0.72);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--serif);
+      font-weight: 600;
+      font-size: 19px;
+      letter-spacing: 0.2px;
+      text-decoration: none;
+    }
+
+    .brand svg { display: block; width: 26px; height: 26px; }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 30px;
+      font-size: 14.5px;
+      color: var(--ink-dim);
+    }
+
+    .nav-links a {
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+
+    .nav-links a:hover { color: var(--ink); }
+
+    .nav-links .gh {
+      color: var(--ink);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .nav-links .gh svg { width: 17px; height: 17px; fill: currentColor; }
+
+    @media (max-width: 720px) {
+      .nav-links a:not(.gh) { display: none; }
+    }
+
+    /* ---------- buttons ---------- */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 22px;
+      border-radius: 999px;
+      font-family: var(--sans);
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease;
+    }
+
+    .btn:active { transform: translateY(1px); }
+
+    .btn-primary {
+      background: var(--lime);
+      color: #0b0c09;
+    }
+
+    .btn-primary:hover { background: var(--lime-bright); }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--ink);
+      border-color: var(--line-strong);
+    }
+
+    .btn-ghost:hover { border-color: var(--lime); }
+
+    .btn svg { width: 16px; height: 16px; fill: currentColor; }
+
+    /* ---------- hero ---------- */
+    .hero {
+      position: relative;
+      padding: 92px 0 96px;
+      overflow: hidden;
+    }
+
+    .hero-glow {
+      position: absolute;
+      inset: -20% -10% auto auto;
+      width: 720px;
+      height: 720px;
+      background:
+        radial-gradient(closest-side, rgba(208, 242, 74, 0.14), rgba(208, 242, 74, 0) 70%),
+        radial-gradient(closest-side, rgba(255, 139, 118, 0.10), rgba(255, 139, 118, 0) 70%);
+      background-position: 30% 20%, 80% 80%;
+      background-repeat: no-repeat;
+      filter: blur(8px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .hero .wrap {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: 56px;
+      align-items: center;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      font-size: 13px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--lime);
+      margin-bottom: 22px;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--lime);
+      box-shadow: 0 0 12px var(--lime);
+    }
+
+    h1 {
+      font-family: var(--serif);
+      font-weight: 500;
+      font-size: clamp(2.5rem, 5.4vw, 3.75rem);
+      line-height: 1.06;
+      letter-spacing: -0.015em;
+      margin: 0 0 22px;
+    }
+
+    h1 em {
+      font-style: italic;
+      color: var(--lime-bright);
+    }
+
+    .lede {
+      font-size: 18px;
+      color: var(--ink-dim);
+      max-width: 34em;
+      margin: 0 0 32px;
+    }
+
+    .cta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-bottom: 30px;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 10px;
+      font-size: 13px;
+      color: var(--ink-faint);
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+    }
+
+    .chip::before {
+      content: "";
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--coral);
+    }
+
+    /* ---------- vinyl ---------- */
+    .disc-frame {
+      position: relative;
+      display: grid;
+      place-items: center;
+    }
+
+    .disc {
+      width: min(420px, 78vw);
+      height: auto;
+      filter: drop-shadow(0 30px 60px rgba(0, 0, 0, 0.55));
+    }
+
+    .disc .spin {
+      transform-origin: 256px 256px;
+      animation: spin 14s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (prefers-reduced-motion: reduce) {
+      .disc .spin { animation: none; }
+      html { scroll-behavior: auto; }
+    }
+
+    @media (max-width: 900px) {
+      .hero { padding: 64px 0 72px; }
+      .hero .wrap { grid-template-columns: 1fr; gap: 44px; }
+      .disc-frame { order: -1; }
+      .disc { width: min(300px, 66vw); }
+    }
+
+    /* ---------- sections ---------- */
+    section { position: relative; }
+
+    .band {
+      padding: 84px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .section-head {
+      max-width: 40em;
+      margin-bottom: 48px;
+    }
+
+    .kicker {
+      font-size: 12.5px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+      margin-bottom: 14px;
+    }
+
+    h2 {
+      font-family: var(--serif);
+      font-weight: 500;
+      font-size: clamp(1.8rem, 3.4vw, 2.4rem);
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+      margin: 0 0 14px;
+    }
+
+    .section-head p {
+      color: var(--ink-dim);
+      margin: 0;
+      font-size: 16.5px;
+    }
+
+    /* ---------- steps ---------- */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+      counter-reset: step;
+    }
+
+    .step {
+      padding: 26px 22px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, var(--bg-raise), var(--bg));
+    }
+
+    .step-num {
+      font-family: var(--serif);
+      font-size: 15px;
+      color: var(--lime);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      border: 1px solid var(--line-strong);
+      border-radius: 50%;
+      margin-bottom: 16px;
+    }
+
+    .step h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0 0 6px;
+    }
+
+    .step p {
+      margin: 0;
+      font-size: 14px;
+      color: var(--ink-faint);
+    }
+
+    @media (max-width: 860px) {
+      .steps { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 480px) {
+      .steps { grid-template-columns: 1fr; }
+    }
+
+    /* ---------- features ---------- */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    .feat {
+      padding: 28px 24px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--bg-card);
+      transition: border-color 0.18s ease, transform 0.18s ease;
+    }
+
+    .feat:hover {
+      border-color: var(--line-strong);
+      transform: translateY(-2px);
+    }
+
+    .feat-icon {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 9px;
+      background: rgba(208, 242, 74, 0.10);
+      margin-bottom: 16px;
+    }
+
+    .feat-icon svg { width: 18px; height: 18px; stroke: var(--lime); fill: none; stroke-width: 1.6; }
+
+    .feat h3 {
+      font-size: 16.5px;
+      font-weight: 600;
+      margin: 0 0 8px;
+    }
+
+    .feat p {
+      margin: 0;
+      font-size: 14.5px;
+      color: var(--ink-dim);
+    }
+
+    @media (max-width: 900px) {
+      .features { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 560px) {
+      .features { grid-template-columns: 1fr; }
+    }
+
+    /* ---------- install ---------- */
+    .platforms {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    .plat {
+      padding: 26px 24px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--bg-card);
+    }
+
+    .plat h3 {
+      font-family: var(--serif);
+      font-size: 19px;
+      font-weight: 600;
+      margin: 0 0 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .plat h3 svg { width: 20px; height: 20px; fill: var(--ink-dim); }
+
+    .plat ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      font-size: 13.5px;
+      color: var(--ink-faint);
+    }
+
+    .plat li {
+      padding: 7px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .plat li:first-child { border-top: none; }
+
+    .plat code {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: var(--ink-dim);
+      background: rgba(233, 255, 156, 0.06);
+      padding: 2px 6px;
+      border-radius: 5px;
+      word-break: break-all;
+    }
+
+    @media (max-width: 900px) {
+      .platforms { grid-template-columns: 1fr; }
+    }
+
+    .build-note {
+      margin-top: 26px;
+      padding: 22px 24px;
+      border: 1px dashed var(--line-strong);
+      border-radius: var(--radius);
+      font-size: 14.5px;
+      color: var(--ink-dim);
+    }
+
+    .build-note code {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 12.5px;
+      color: var(--lime-bright);
+    }
+
+    /* ---------- privacy ---------- */
+    .privacy .wrap {
+      display: grid;
+      grid-template-columns: 0.85fr 1.15fr;
+      gap: 48px;
+      align-items: start;
+    }
+
+    .privacy ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .privacy li {
+      position: relative;
+      padding: 14px 0 14px 28px;
+      border-top: 1px solid var(--line);
+      font-size: 15px;
+      color: var(--ink-dim);
+    }
+
+    .privacy li:first-child { border-top: none; }
+
+    .privacy li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 20px;
+      width: 12px;
+      height: 12px;
+      border: 1.5px solid var(--lime);
+      border-radius: 3px;
+    }
+
+    .privacy li strong { color: var(--ink); font-weight: 600; }
+
+    @media (max-width: 860px) {
+      .privacy .wrap { grid-template-columns: 1fr; gap: 28px; }
+    }
+
+    /* ---------- footer ---------- */
+    footer {
+      border-top: 1px solid var(--line);
+      padding: 44px 0 56px;
+      color: var(--ink-faint);
+      font-size: 13.5px;
+    }
+
+    .foot-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .foot-row a { color: var(--ink-dim); text-decoration: none; }
+    .foot-row a:hover { color: var(--ink); }
+
+    .foot-links { display: flex; gap: 22px; }
+
+    .disclaimer {
+      margin-top: 22px;
+      max-width: 52em;
+      line-height: 1.55;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap nav">
+      <a class="brand" href="#top" aria-label="Playlist Forge home">
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <circle cx="16" cy="16" r="14" fill="#161911" stroke="rgba(233,255,156,0.25)" stroke-width="1"/>
+          <circle cx="16" cy="16" r="9.5" fill="none" stroke="rgba(233,255,156,0.12)"/>
+          <circle cx="16" cy="16" r="5" fill="#d0f24a"/>
+          <circle cx="16" cy="16" r="1.7" fill="#0b0c09"/>
+        </svg>
+        Playlist&nbsp;Forge
+      </a>
+      <nav class="nav-links">
+        <a href="#how">How it works</a>
+        <a href="#features">Features</a>
+        <a href="#install">Install</a>
+        <a class="gh" href="https://github.com/platten/playlistforge">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- HERO -->
+    <section class="hero">
+      <div class="hero-glow" aria-hidden="true"></div>
+      <div class="wrap">
+        <div class="hero-copy">
+          <span class="eyebrow">Local-first desktop app</span>
+          <h1>Turn a sentence into a <em>researched</em> playlist.</h1>
+          <p class="lede">
+            Describe what you want to hear. Playlist Forge uses OpenAI's Responses API
+            with web search to assemble a coherent, intentionally ordered tracklist of
+            real recordings — then you review and revise it track by track before
+            handing it to your streaming service.
+          </p>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="https://github.com/platten/playlistforge/releases">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1a1 1 0 0 1 1 1v6.59l2.3-2.3a1 1 0 0 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 1.4-1.42L7 8.59V2a1 1 0 0 1 1-1zM3 13a1 1 0 0 1 1 1v0h8v0a1 1 0 1 1 2 0 2 2 0 0 1-2 2H4a2 2 0 0 1-2-2 1 1 0 0 1 1-1z"/></svg>
+              Download
+            </a>
+            <a class="btn btn-ghost" href="https://github.com/platten/playlistforge">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+              View source
+            </a>
+          </div>
+          <div class="chips">
+            <span class="chip">No account</span>
+            <span class="chip">No telemetry</span>
+            <span class="chip">No network listener</span>
+            <span class="chip">Key stays in your OS keychain</span>
+          </div>
+        </div>
+
+        <div class="disc-frame">
+          <svg class="disc" viewBox="0 0 512 512" role="img" aria-label="A vinyl record with a glowing spark">
+            <defs>
+              <radialGradient id="vinyl" cx="42%" cy="36%" r="78%">
+                <stop offset="0" stop-color="#2a2c21"/>
+                <stop offset="0.5" stop-color="#17190f"/>
+                <stop offset="1" stop-color="#090a07"/>
+              </radialGradient>
+              <radialGradient id="label" cx="40%" cy="32%" r="82%">
+                <stop offset="0" stop-color="#ecff92"/>
+                <stop offset="0.45" stop-color="#d3f450"/>
+                <stop offset="1" stop-color="#aed427"/>
+              </radialGradient>
+              <linearGradient id="sheen" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#eaff90" stop-opacity="0"/>
+                <stop offset="0.45" stop-color="#eaff90" stop-opacity="0.10"/>
+                <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.14"/>
+                <stop offset="0.56" stop-color="#eaff90" stop-opacity="0.08"/>
+                <stop offset="1" stop-color="#eaff90" stop-opacity="0"/>
+              </linearGradient>
+              <linearGradient id="spark" x1="0" y1="0" x2="0.4" y2="1">
+                <stop offset="0" stop-color="#f6ffb6"/>
+                <stop offset="0.5" stop-color="#dbf965"/>
+                <stop offset="1" stop-color="#c2ea38"/>
+              </linearGradient>
+              <radialGradient id="sparkGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0" stop-color="#eeff9a" stop-opacity="0.55"/>
+                <stop offset="0.4" stop-color="#d0f24a" stop-opacity="0.14"/>
+                <stop offset="1" stop-color="#d0f24a" stop-opacity="0"/>
+              </radialGradient>
+              <clipPath id="discClip"><circle cx="256" cy="256" r="240"/></clipPath>
+            </defs>
+
+            <g class="spin">
+              <circle cx="256" cy="256" r="240" fill="url(#vinyl)"/>
+              <g clip-path="url(#discClip)" fill="none" stroke="#e8f0d2">
+                <circle cx="256" cy="256" r="100" stroke-opacity="0.05"/>
+                <circle cx="256" cy="256" r="118" stroke-opacity="0.05"/>
+                <circle cx="256" cy="256" r="134" stroke-opacity="0.09"/>
+                <circle cx="256" cy="256" r="152" stroke-opacity="0.05"/>
+                <circle cx="256" cy="256" r="170" stroke-opacity="0.05"/>
+                <circle cx="256" cy="256" r="188" stroke-opacity="0.09"/>
+                <circle cx="256" cy="256" r="206" stroke-opacity="0.05"/>
+                <circle cx="256" cy="256" r="224" stroke-opacity="0.06"/>
+              </g>
+              <g clip-path="url(#discClip)">
+                <g transform="rotate(-34 256 256)">
+                  <rect x="70" y="30" width="150" height="452" fill="url(#sheen)"/>
+                  <rect x="320" y="30" width="80" height="452" fill="url(#sheen)" opacity="0.4"/>
+                </g>
+              </g>
+              <circle cx="256" cy="256" r="240" fill="none" stroke="#ffffff" stroke-opacity="0.12" stroke-width="1.5"/>
+              <circle cx="256" cy="256" r="82" fill="url(#label)"/>
+              <circle cx="256" cy="256" r="82" fill="none" stroke="#000000" stroke-opacity="0.22" stroke-width="2"/>
+              <path d="M 214 226 A 82 82 0 0 1 300 221" fill="none" stroke="#ffffff" stroke-opacity="0.45" stroke-width="4" stroke-linecap="round"/>
+              <circle cx="256" cy="256" r="13" fill="#0b0c09"/>
+            </g>
+
+            <g transform="translate(398 118)">
+              <circle r="96" fill="url(#sparkGlow)"/>
+              <g transform="rotate(14)">
+                <path d="M 0 -70 C 9 -9 9 -9 70 0 C 9 9 9 9 0 70 C -9 9 -9 9 -70 0 C -9 -9 -9 -9 0 -70 Z" fill="url(#spark)"/>
+                <path d="M 0 -20 C 3 -3 3 -3 20 0 C 3 3 3 3 0 20 C -3 3 -3 3 -20 0 C -3 -3 -3 -3 0 -20 Z" fill="#ffffff" fill-opacity="0.92"/>
+              </g>
+            </g>
+            <g transform="translate(360 214)">
+              <path d="M 0 -30 C 4 -4 4 -4 30 0 C 4 4 4 4 0 30 C -4 4 -4 4 -30 0 C -4 -4 -4 -4 0 -30 Z" fill="#ff8b76"/>
+            </g>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section class="band" id="how">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">How it works</div>
+          <h2>From a prompt to your library in four moves.</h2>
+          <p>Every operation is deliberate, and every change is kept — nothing is silently overwritten.</p>
+        </div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <h3>Describe</h3>
+            <p>Write a brief, pick 20–100 tracks and a reasoning effort, and optionally point to earlier playlists for inspiration.</p>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <h3>Generate</h3>
+            <p>It researches and orders the tracklist, then shows the title, description, per-track rationale, and a cost estimate.</p>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <h3>Revise</h3>
+            <p>Remove a track, request a single replacement, or refine the whole playlist. Each operation writes an immutable local revision.</p>
+          </div>
+          <div class="step">
+            <div class="step-num">4</div>
+            <h3>Hand off</h3>
+            <p>Generate a temporary Soundiiz import link and complete the transfer to TIDAL, Qobuz, Spotify, or Apple Music.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FEATURES -->
+    <section class="band" id="features">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">What you get</div>
+          <h2>Built to be trusted with your listening.</h2>
+          <p>A single Go binary running on the native webview — no server, no bundled runtime, no database service.</p>
+        </div>
+        <div class="features">
+          <div class="feat">
+            <div class="feat-icon"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10" stroke-linecap="round"/></svg></div>
+            <h3>Prompt to playlist</h3>
+            <p>A natural-language brief becomes a titled, ordered playlist of 20–100 tracks, each with a rationale and recording/version notes.</p>
+          </div>
+          <div class="feat">
+            <div class="feat-icon"><svg viewBox="0 0 24 24"><path d="M12 8v8m-4-4h8" stroke-linecap="round"/><circle cx="12" cy="12" r="9"/></svg></div>
+            <h3>Every edit is a revision</h3>
+            <p>Remove, replace, or refine — nothing is overwritten. History stays browsable so you can always see how a playlist evolved.</p>
+          </div>
+          <div class="feat">
+            <div class="feat-icon"><svg viewBox="0 0 24 24"><path d="m5 13 4 4L19 7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <h3>Grounded, not guessed</h3>
+            <p>The model is instructed to verify tracks and requested versions with web search, and to avoid invented recordings.</p>
+          </div>
+          <div class="feat">
+            <div class="feat-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3" stroke-linecap="round"/></svg></div>
+            <h3>Transparent cost</h3>
+            <p>Each request shows an estimated USD cost from reported token and web-search usage against a versioned rate card.</p>
+          </div>
+          <div class="feat">
+            <div class="feat-icon"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z"/></svg></div>
+            <h3>Private by default</h3>
+            <p>Your OpenAI key lives in the OS credential store — never in the playlist database, never returned to the frontend.</p>
+          </div>
+          <div class="feat">
+            <div class="feat-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4" stroke-linecap="round"/></svg></div>
+            <h3>Local-first</h3>
+            <p>No account, no telemetry, no network listener. Data lives in your OS-standard application directory in a local SQLite file.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- INSTALL -->
+    <section class="band" id="install">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">Install</div>
+          <h2>Download a build and launch it.</h2>
+          <p>It opens its own window and does not listen on a network port. Every platform is built for both x86-64 and ARM64.</p>
+        </div>
+        <div class="platforms">
+          <div class="plat">
+            <h3><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M0 2.3 6.5 1.4v6.1H0V2.3ZM7.3 1.3 16 0v7.5H7.3V1.3ZM0 8.5h6.5v6.1L0 13.7V8.5Zm7.3 0H16V16l-8.7-1.2V8.5Z"/></svg>Windows</h3>
+            <ul>
+              <li>NSIS installer, <code>-setup.exe</code> — Winget-ready</li>
+              <li>Portable <code>.exe</code> — download and run, no install</li>
+              <li>x64 and ARM64</li>
+            </ul>
+          </div>
+          <div class="plat">
+            <h3><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.2 8.4c0-1.8 1.5-2.7 1.6-2.7-.9-1.3-2.2-1.4-2.7-1.5-1.2-.1-2.2.7-2.8.7-.6 0-1.5-.7-2.4-.6-1.3 0-2.4.7-3 1.9-1.3 2.2-.3 5.5 .9 7.3 .6 .9 1.4 1.9 2.3 1.8 .9 0 1.3-.6 2.4-.6 1.1 0 1.4 .6 2.4 .6 1 0 1.6-.9 2.2-1.8 .7-1 1-2 1-2.1 0 0-1.9-.7-1.9-2.9ZM9.5 3c.5-.6.8-1.4.7-2.3-.7 0-1.6.5-2.1 1.1-.5.5-.9 1.4-.7 2.2.8.1 1.6-.4 2.1-1Z"/></svg>macOS</h3>
+            <ul>
+              <li><code>playlist-forge.app</code>, universal</li>
+              <li>Intel and Apple Silicon in one bundle</li>
+              <li>Release builds are currently unsigned</li>
+            </ul>
+          </div>
+          <div class="plat">
+            <h3><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0c-1.7 0-2 1.6-2 2.6 0 1 .1 2-.6 3-.7 1-2.4 2.7-2.4 4.6 0 .8.3 1.3.3 1.9 0 .5-.4 1-.3 1.6.1.6.7.8 1.4 1 .7.2 1.4.4 2 .9.4.3.9.5 1.6.5s1.2-.2 1.6-.5c.6-.5 1.3-.7 2-.9.7-.2 1.3-.4 1.4-1 .1-.6-.3-1.1-.3-1.6 0-.6.3-1.1.3-1.9 0-1.9-1.7-3.6-2.4-4.6-.7-1-.6-2-.6-3C10 1.6 9.7 0 8 0Z"/></svg>Linux</h3>
+            <ul>
+              <li><code>.deb</code>, <code>.rpm</code>, <code>.AppImage</code> per architecture</li>
+              <li>Needs GTK 3 and WebKitGTK 4.1</li>
+              <li>The <code>.deb</code>/<code>.rpm</code> declare the dependency</li>
+            </ul>
+          </div>
+        </div>
+        <div class="build-note">
+          <strong>Prefer to build it yourself?</strong> Playlist Forge is a
+          <a href="https://v3.wails.io" style="color:var(--lime-bright)">Wails v3</a> app.
+          With Go 1.27+, Node 24, and pnpm: <code>pnpm --dir web run build</code> then
+          <code>go build</code>. Full instructions and the release workflow are in the
+          <a href="https://github.com/platten/playlistforge#building-from-source" style="color:var(--lime-bright)">README</a>.
+        </div>
+      </div>
+    </section>
+
+    <!-- PRIVACY -->
+    <section class="band privacy">
+      <div class="wrap">
+        <div class="section-head" style="margin-bottom:0">
+          <div class="kicker">Security invariants</div>
+          <h2>Your credentials never leave your machine.</h2>
+          <p>Playlist Forge sends only what a handoff needs — titles and artist names — and nothing else.</p>
+        </div>
+        <ul>
+          <li>The OpenAI base URL is fixed to <strong>api.openai.com</strong>; no environment variable can redirect it.</li>
+          <li>The Soundiiz endpoint is fixed, redirects are not followed, and a returned handoff URL must match the exact HTTPS host and path or it is rejected.</li>
+          <li>Soundiiz receives only the accepted playlist <strong>title, description, track titles, and artist names</strong> — never streaming credentials.</li>
+          <li>User text is rendered without raw HTML; every external URL is validated before it is opened.</li>
+          <li>Console logs redact key-shaped values. Prompts and tracklists are logged only at debug level.</li>
+          <li>The API key is never written to <strong>playlists.db</strong> and never returned to the frontend.</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div class="foot-row">
+        <div>
+          <strong style="color:var(--ink-dim)">Playlist Forge</strong> · MIT License · © 2026 Paul Pietkiewicz
+        </div>
+        <div class="foot-links">
+          <a href="https://github.com/platten/playlistforge">GitHub</a>
+          <a href="https://github.com/platten/playlistforge/blob/main/ARCHITECTURE.md">Architecture</a>
+          <a href="https://github.com/platten/playlistforge/releases">Releases</a>
+        </div>
+      </div>
+      <p class="disclaimer">
+        Not affiliated with OpenAI, Soundiiz, TIDAL, Qobuz, Spotify, or Apple. API calls to
+        OpenAI are billed to your own account by usage; cost figures shown in the app are
+        estimates, not invoices.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>
