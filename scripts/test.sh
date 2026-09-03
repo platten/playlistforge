@@ -41,24 +41,19 @@ fi
 host_goos="$(go env GOOS)"
 cgo_enabled="$(go env CGO_ENABLED)"
 
-# Wails v3 defaults to GTK4 + WebKitGTK 6.0 on Linux. Playlist Forge targets the
-# GTK3 + WebKitGTK 4.1 stack, selected with the `gtk3` build tag, which is the
-# webview toolchain installed in CI. Other platforms need no build tag.
-go_tags=()
-if [[ "$host_goos" == "linux" ]]; then
-  go_tags=(-tags gtk3)
-fi
+# On Linux, Wails v3 links its default GTK4 + WebKitGTK 6.0 backend (no build
+# tag); that toolchain is installed in CI. Other platforms need no build tag.
 
 echo "==> Running Go Vet and unit tests"
 (
   cd "$project_root"
-  go vet "${go_tags[@]}" ./...
-  go test "${go_tags[@]}" -count=1 ./...
+  go vet ./...
+  go test -count=1 ./...
 )
 
 if [[ "$skip_race" == false && "$cgo_enabled" == "1" && ( "$host_goos" == "linux" || "$host_goos" == "darwin" ) ]]; then
   echo "==> Running the Go race detector"
-  (cd "$project_root" && go test "${go_tags[@]}" -race -count=1 ./...)
+  (cd "$project_root" && go test -race -count=1 ./...)
 else
   echo "==> Race detector skipped (requires CGO on Linux or macOS, or --skip-race was supplied)"
 fi

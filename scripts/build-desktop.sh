@@ -52,7 +52,7 @@ case "$host_os" in
   linux)
     (
       cd "$project_root"
-      CGO_ENABLED=1 go build -tags gtk3 -trimpath -ldflags "$ldflags" \
+      CGO_ENABLED=1 go build -trimpath -ldflags "$ldflags" \
         -o "$bin_dir/playlist-forge" .
     )
     bash "$script_dir/package-linux.sh" --version "$version"
