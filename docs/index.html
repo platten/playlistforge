@@ -12,11 +12,13 @@
   <meta property="og:type" content="website" />
   <meta property="og:title" content="Playlist Forge" />
   <meta property="og:description" content="Turn a sentence into a researched playlist, review every track, and hand it to your streaming service." />
-  <meta property="og:image" content="./appicon.png" />
+  <meta property="og:image" content="./og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Playlist Forge" />
   <meta name="twitter:description" content="Turn a sentence into a researched playlist, review every track, and hand it to your streaming service." />
-  <meta name="twitter:image" content="./appicon.png" />
+  <meta name="twitter:image" content="./og.png" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -296,6 +298,28 @@
       .hero .wrap { grid-template-columns: 1fr; gap: 44px; }
       .disc-frame { order: -1; }
       .disc { width: min(300px, 66vw); }
+    }
+
+    /* ---------- product shot ---------- */
+    .shot { padding: 4px 0 88px; }
+
+    .shot-frame {
+      position: relative;
+      border: 1px solid var(--line-strong);
+      border-radius: 14px;
+      overflow: hidden;
+      background: var(--bg-raise);
+      box-shadow:
+        0 44px 90px -34px rgba(0, 0, 0, 0.72),
+        0 0 0 1px rgba(233, 255, 156, 0.04);
+    }
+
+    .shot-frame img { display: block; width: 100%; height: auto; }
+
+    .shot-cap {
+      margin: 16px 2px 0;
+      font-size: 13.5px;
+      color: var(--ink-faint);
     }
 
     /* ---------- sections ---------- */
@@ -701,6 +725,18 @@
             </g>
           </svg>
         </div>
+      </div>
+    </section>
+
+    <!-- PRODUCT SHOT -->
+    <section class="shot">
+      <div class="wrap">
+        <div class="shot-frame">
+          <img src="./screenshot.webp" width="1600" height="999"
+               alt="Playlist Forge on the Create screen: an editorial hero beside the brief composer — a prompt field, track count, reasoning effort, and an inspiration picker."
+               loading="lazy" decoding="async" />
+        </div>
+        <p class="shot-cap">The composer: describe the feeling, set the size and reasoning effort, and forge.</p>
       </div>
     </section>
 

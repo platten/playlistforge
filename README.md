@@ -13,6 +13,13 @@ The React/TypeScript interface is embedded in a single Go binary that runs on th
 operating system's native webview. There is no server, no bundled runtime, and no
 database service — just an executable and a local SQLite file.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/screenshot-light.webp" />
+    <img src="docs/screenshot.webp" width="820" alt="Playlist Forge on the Create screen: the brief composer beside the editorial hero." />
+  </picture>
+</p>
+
 ---
 
 ## Highlights
