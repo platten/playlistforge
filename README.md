@@ -75,6 +75,35 @@ Release builds are currently unsigned. Configure Windows code-signing and an
 Apple Developer ID / notarization identity before distributing them as a
 warning-free public release.
 
+### Opening the unsigned macOS build
+
+Because the build is not signed with an Apple Developer ID or notarized,
+Gatekeeper blocks the first launch — macOS says Playlist Forge "cannot be opened
+because Apple cannot check it for malicious software", or that the app is
+"damaged and can't be opened". This is expected for an unsigned app. Clear it
+once per download with either method:
+
+**System Settings (recommended).** Double-click `playlist-forge.app` and dismiss
+the warning. Open **System Settings → Privacy & Security**, scroll to the
+Security section, and click **Open Anyway** next to the Playlist Forge message,
+confirming with Touch ID or your password. Launch the app again and click
+**Open**. (On macOS 14 and earlier you can instead Control-click the app in
+Finder and choose **Open**; macOS 15 removed that shortcut, so use Privacy &
+Security there.)
+
+**Terminal.** Remove the quarantine attribute the download added, then open the
+app normally:
+
+```sh
+xattr -dr com.apple.quarantine /path/to/playlist-forge.app
+```
+
+Use `xattr -cr` instead if `-dr` reports the attribute is missing on some files
+inside the bundle.
+
+Signing and notarization will remove this step in a later release. Background:
+Apple's [Safely open apps on your Mac](https://support.apple.com/en-us/102445).
+
 ## First run: connect an OpenAI API key
 
 Open **Settings**, paste a key into **API key**, and choose **Save key**.
@@ -321,6 +350,7 @@ artifacts (Linux on both an x86-64 and an ARM64 runner), writes
 | Soundiiz link expired | Create a fresh handoff from the saved playlist preview. |
 | Streaming session expired | Open **Settings** (or use the banner) and choose **Reconnect** for that service. Imported playlists are kept; Browse shows **Reconnect** in place of **Reload** until you do. |
 | "… is not available right now" | A transient TIDAL, Qobuz, or Soundiiz outage. Wait a moment and retry the Reload or handoff; the connection itself is still fine. |
+| macOS won't open the app ("damaged" / "cannot be checked") | Expected for the unsigned build. See [Opening the unsigned macOS build](#opening-the-unsigned-macos-build). |
 
 ## License
 
