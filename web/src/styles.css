@@ -647,15 +647,11 @@ select {
   color: var(--text-dim);
   font-weight: 400;
 }
-.references label {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  margin: 0.55rem 0;
+.references-hint {
+  margin: 0.55rem 0 0;
   color: var(--text-muted);
-  font-weight: 450;
+  font-size: 0.83rem;
 }
-.references input,
 .check-line input {
   width: 1rem;
   height: 1rem;
