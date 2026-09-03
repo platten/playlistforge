@@ -242,9 +242,44 @@ Your OpenAI dashboard is authoritative.
 
 ## Building from source
 
-**Requirements:** Go 1.27+, Node.js 24, pnpm 11.19. On Linux, the GTK 4 /
-WebKitGTK 6.0 development libraries (`libgtk-4-dev`, `libwebkitgtk-6.0-dev` on
-Debian/Ubuntu 24.04+; `gtk4-devel`, `webkitgtk6.0-devel` on Fedora).
+**Requirements:** Go 1.27+ (matching `go 1.27` in `go.mod`), Node.js 24,
+pnpm 11.19, and — on Linux — a C toolchain plus the GTK 4 / WebKitGTK 6.0
+development headers (CGO is required for the webview).
+
+### Ubuntu 24.04
+
+```sh
+# System build dependencies
+sudo apt-get update
+sudo apt-get install -y build-essential pkg-config git curl \
+  libgtk-4-dev libwebkitgtk-6.0-dev
+
+# Go — Ubuntu's package is older than 1.27, so install the official tarball.
+# Set GO_VERSION to the current 1.27.x from https://go.dev/dl/.
+GO_VERSION=1.27.0
+curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz" \
+  | sudo tar -C /usr/local -xz
+export PATH="$PATH:/usr/local/go/bin"   # add to ~/.profile to persist
+
+# Node.js 24 (Ubuntu ships 18) and pnpm 11.19, via corepack
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+sudo apt-get install -y nodejs
+corepack enable && corepack prepare pnpm@11.19.0 --activate
+```
+
+Then:
+
+```sh
+git clone https://github.com/platten/playlistforge.git
+cd playlistforge
+bash scripts/build-desktop.sh   # runs the quality gate, then writes
+                                # .deb, .rpm, and .AppImage to build/bin
+```
+
+`scripts/build-desktop.sh` installs the frontend dependencies and builds the
+embedded UI itself; `curl` and `sha256sum` (from `coreutils`) are the only other
+tools the Linux packaging step needs. Fedora is analogous with `gcc`,
+`pkg-config`, `gtk4-devel`, and `webkitgtk6.0-devel`.
 
 This is a [Wails v3](https://v3.wails.io) application. Wails v3 embeds the built
 frontend with a plain `//go:embed`, so a build is: build the frontend, then
