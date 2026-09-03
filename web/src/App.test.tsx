@@ -261,6 +261,78 @@ describe("App", () => {
     },
   });
 
+  const playlist = (
+    id: string,
+    title: string,
+    origin: "generated" | "imported",
+    kind?: string,
+  ) => ({
+    id,
+    createdAt: "2026-09-01T00:00:00Z",
+    updatedAt: "2026-09-01T00:00:00Z",
+    revisionCount: 1,
+    origin,
+    ...(kind
+      ? {
+          sources: [
+            {
+              kind,
+              url: `https://${kind}.com/playlist/${id}`,
+              syncedAt: "2026-09-01T00:00:00Z",
+              externalId: id,
+            },
+          ],
+        }
+      : {}),
+    currentRevision: revision(title),
+  });
+
+  it("hides a streaming playlist that duplicates one forged here, by name", async () => {
+    bindings.ListPlaylists.mockResolvedValue([
+      playlist("imp-aurora", "Aurora", "imported", "tidal"),
+      playlist("gen-aurora", "Aurora", "generated"),
+      playlist("imp-borealis", "Borealis", "imported", "qobuz"),
+    ]);
+
+    render(<App />);
+    // The composer's reference picker: "Aurora" appears once, the import is gone.
+    await screen.findByLabelText(/what should this playlist feel/i);
+    expect(screen.getAllByRole("checkbox", { name: /Aurora/ })).toHaveLength(1);
+    expect(
+      screen.getByRole("checkbox", { name: /Borealis/ }),
+    ).toBeInTheDocument();
+
+    // Browse hides it too.
+    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
+    expect(await screen.findAllByText("Aurora")).toHaveLength(1);
+  });
+
+  it("caps the composer picker at 8, forged-here playlists first", async () => {
+    const items = [
+      ...Array.from({ length: 8 }, (_, i) =>
+        playlist(`imp-${i}`, `Import ${i}`, "imported", "tidal"),
+      ),
+      playlist("gen-a", "Forged A", "generated"),
+      playlist("gen-b", "Forged B", "generated"),
+    ];
+    bindings.ListPlaylists.mockResolvedValue(items);
+
+    render(<App />);
+    await screen.findByLabelText(/what should this playlist feel/i);
+    const checks = screen.getAllByRole("checkbox");
+    expect(checks).toHaveLength(8);
+    expect(
+      screen.getByRole("checkbox", { name: /Forged A/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /Forged B/ }),
+    ).toBeInTheDocument();
+    // The two oldest imports were bumped to make room.
+    expect(
+      screen.queryByRole("checkbox", { name: /Import 7/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it("clusters Browse selections and seeds them into the composer", async () => {
     bindings.ListPlaylists.mockResolvedValue([
       {

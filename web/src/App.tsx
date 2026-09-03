@@ -115,6 +115,34 @@ const errorText = (reason: unknown, fallback: string): string =>
     ? reason.message
     : fallback;
 
+const normalizeTitle = (item: Playlist): string =>
+  (item.currentRevision?.title ?? "").trim().toLowerCase();
+
+// A streaming playlist whose title matches a playlist forged here is the
+// imported twin the fuzzy same-music merge didn't catch. Drop the import; the
+// forged record stands in for both. Applied to every list the app shows.
+function dedupeByName(history: Playlist[]): Playlist[] {
+  const forged = new Set<string>();
+  for (const item of history) {
+    if (item.origin === "generated") {
+      const title = normalizeTitle(item);
+      if (title) forged.add(title);
+    }
+  }
+  return history.filter(
+    (item) => item.origin === "generated" || !forged.has(normalizeTitle(item)),
+  );
+}
+
+// The Create screen's inspiration picker is bounded; the rest is reachable
+// through "Browse all playlists".
+const REFERENCE_PICKER_LIMIT = 8;
+
+// Playlists forged here first, then imports, most-recent within each group
+// (history already arrives newest-first, and Array.sort is stable).
+const forgedFirst = (a: Playlist, b: Playlist): number =>
+  (a.origin === "generated" ? 0 : 1) - (b.origin === "generated" ? 0 : 1);
+
 /**
  * Stops a render error in one view from blanking the whole app. React needs a
  * class component for this; it is the only one in the file.
@@ -314,7 +342,7 @@ export default function App() {
       api.connections(),
     ]);
     setConfig(nextConfig);
-    setHistory(nextHistory);
+    setHistory(dedupeByName(nextHistory));
     setConnections(nextConnections);
   }, []);
 
@@ -554,6 +582,9 @@ function CreatePage({
   // Seeded from a Browse selection; the picker below can still add or remove.
   const [references, setReferences] = useState<string[]>(inspirationSeed);
 
+  const pickable = [...history]
+    .sort(forgedFirst)
+    .slice(0, REFERENCE_PICKER_LIMIT);
   const titleOf = (id: string) =>
     history.find((item) => item.id === id)?.currentRevision.title ?? "Playlist";
   const toggleReference = (id: string, on: boolean) =>
@@ -645,7 +676,7 @@ function CreatePage({
             <legend>
               Use existing playlists as inspiration <span>(optional)</span>
             </legend>
-            {history.slice(0, 8).map((item) => (
+            {pickable.map((item) => (
               <label key={item.id}>
                 <input
                   type="checkbox"
@@ -657,9 +688,7 @@ function CreatePage({
               </label>
             ))}
             {references
-              .filter(
-                (id) => !history.slice(0, 8).some((item) => item.id === id),
-              )
+              .filter((id) => !pickable.some((item) => item.id === id))
               .map((id) => (
                 <span className="reference-chip" key={id}>
                   {titleOf(id)}
