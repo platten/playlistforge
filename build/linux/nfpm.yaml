@@ -28,12 +28,12 @@ contents:
     file_info:
       mode: 0644
 depends:
-  - libgtk-3-0 | libgtk-3-0t64
-  - libwebkit2gtk-4.1-0
+  - libgtk-4-1
+  - libwebkitgtk-6.0-4
 overrides:
   rpm:
     depends:
-      - gtk3
-      - webkit2gtk4.1
+      - gtk4
+      - webkitgtk6.0
 rpm:
   group: Applications/Multimedia

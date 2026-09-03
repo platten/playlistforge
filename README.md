@@ -69,7 +69,7 @@ both x86-64 and ARM64.
 | Windows | `playlist-forge-<version>-windows-<arch>-setup.exe` | NSIS installer for x64 or ARM64; suitable for Winget. |
 | Windows (portable) | `playlist-forge-<version>-windows-<arch>.exe` | The standalone application. No installation — download and run it. |
 | macOS | `playlist-forge.app` (universal) | Intel and Apple Silicon in one bundle. |
-| Linux | `.deb`, `.rpm`, `.AppImage` (per architecture) | Needs GTK 3 and WebKitGTK 4.1; the `.deb`/`.rpm` declare this. The `.AppImage` is portable. |
+| Linux | `.deb`, `.rpm`, `.AppImage` (per architecture) | Needs GTK 4 and WebKitGTK 6.0 (Ubuntu 24.04+, Fedora 38+, Debian 13+); the `.deb`/`.rpm` declare this. The `.AppImage` is portable. |
 
 Release builds are currently unsigned. Configure Windows code-signing and an
 Apple Developer ID / notarization identity before distributing them as a
@@ -242,8 +242,9 @@ Your OpenAI dashboard is authoritative.
 
 ## Building from source
 
-**Requirements:** Go 1.27+, Node.js 24, pnpm 11.19. On Linux, the WebKitGTK
-build dependencies (`libgtk-3-dev`, `libwebkit2gtk-4.1-dev` on Debian/Ubuntu).
+**Requirements:** Go 1.27+, Node.js 24, pnpm 11.19. On Linux, the GTK 4 /
+WebKitGTK 6.0 development libraries (`libgtk-4-dev`, `libwebkitgtk-6.0-dev` on
+Debian/Ubuntu 24.04+; `gtk4-devel`, `webkitgtk6.0-devel` on Fedora).
 
 This is a [Wails v3](https://v3.wails.io) application. Wails v3 embeds the built
 frontend with a plain `//go:embed`, so a build is: build the frontend, then
@@ -271,8 +272,8 @@ For an iteration loop without packaging:
 
 ```sh
 pnpm --dir web run build
-CGO_ENABLED=1 go run -tags gtk3 .   # Linux (GTK3 / WebKitGTK 4.1)
-go run .                            # macOS / Windows
+CGO_ENABLED=1 go run .   # Linux (GTK4 / WebKitGTK 6.0)
+go run .                # macOS / Windows
 ```
 
 ## Development and testing
@@ -296,8 +297,8 @@ The individual commands, for troubleshooting a single stage:
 ```sh
 # Go
 gofmt -l main.go internal
-go vet -tags gtk3 ./...      # drop -tags gtk3 off Linux
-go test -tags gtk3 -race ./...
+go vet ./...
+go test -race ./...
 
 # Frontend (from web/)
 pnpm run format:check
