@@ -75,7 +75,7 @@ type Provider struct {
 // New returns a Provider talking to the live Spotify endpoints.
 func New() *Provider {
 	return &Provider{
-		http:     &http.Client{Timeout: 30 * time.Second},
+		http:     chromeClient(),
 		apiBase:  defaultAPIBase,
 		loginURL: loginURL,
 	}
