@@ -75,10 +75,10 @@ func run() (runErr error) {
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Playlist Forge",
-		Width:            1280,
-		Height:           800,
+		Width:            1360,
+		Height:           880,
 		MinWidth:         900,
-		MinHeight:        640,
+		MinHeight:        680,
 		BackgroundColour: application.NewRGB(11, 12, 10),
 		URL:              "/",
 	})

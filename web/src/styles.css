@@ -363,7 +363,7 @@ main {
   width: 100%;
   max-width: var(--page-max);
   margin: 0 auto;
-  padding: clamp(2.5rem, 6vw, 5.5rem) clamp(1.1rem, 4vw, 3.4rem);
+  padding: clamp(1.6rem, 3.5vw, 3rem) clamp(1.1rem, 4vw, 3.4rem);
 }
 main > * {
   /* Opacity only: a translate here briefly extends the page past the viewport
@@ -501,14 +501,14 @@ h3 {
 }
 
 .hero-copy .lede {
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
 }
 
 .genre-ticker {
   overflow: hidden;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  padding: 0.85rem 0;
+  padding: 0.7rem 0;
   -webkit-mask-image: linear-gradient(
     90deg,
     transparent,
@@ -556,7 +556,7 @@ h3 {
 }
 
 .composer {
-  padding: clamp(1.4rem, 3vw, 2.3rem);
+  padding: clamp(1.3rem, 2.6vw, 2rem);
 }
 .composer > .button {
   width: 100%;
@@ -603,7 +603,7 @@ input {
   padding: 0.85rem 0.95rem;
 }
 textarea {
-  min-height: 168px;
+  min-height: 136px;
   resize: vertical;
   line-height: 1.55;
 }
@@ -622,7 +622,7 @@ select {
   display: grid;
   grid-template-columns: 1fr 1.5fr;
   gap: 1rem;
-  margin: 1.2rem 0;
+  margin: 1rem 0;
 }
 .field-row label {
   margin: 0;
@@ -632,8 +632,8 @@ select {
 }
 
 .references {
-  margin: 1.3rem 0;
-  padding: 0.8rem 1.15rem 1.05rem;
+  margin: 1rem 0;
+  padding: 0.7rem 1.1rem 0.9rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface-2);
@@ -664,8 +664,8 @@ select {
   align-items: center;
   justify-content: space-between;
   gap: 0.9rem;
-  margin-bottom: 1.2rem;
-  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+  padding: 0.8rem 1rem;
   border: 1px solid var(--border-strong);
   background: var(--surface-3);
   border-radius: var(--radius-md);
@@ -700,7 +700,7 @@ select {
 }
 
 .form-note {
-  margin: 0.9rem 0 0;
+  margin: 0.7rem 0 0;
   color: var(--text-dim);
   font-family: var(--font-mono);
   font-size: 0.68rem;
