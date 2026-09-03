@@ -111,9 +111,13 @@ func (p *Provider) Complete(ctx context.Context, captured string) (musicsource.S
 		return musicsource.Session{}, errors.New("Spotify sign-in returned no access token")
 	}
 
+	// Only a definitive 401 means the capture is bad; a 429 or a network
+	// hiccup on this one cosmetic call must not sink an otherwise-good sign-in
+	// (Spotify rate-limits the web-player token hard right after the player's
+	// own boot burst).
 	me, err := p.currentUser(ctx, ct.AccessToken)
-	if err != nil {
-		return musicsource.Session{}, fmt.Errorf("verify Spotify token: %w", err)
+	if errors.Is(err, musicsource.ErrNotConnected) {
+		return musicsource.Session{}, errors.New("Spotify sign-in captured an invalid token")
 	}
 
 	expiry := time.Now().Add(assumedTokenLife)
@@ -155,6 +159,9 @@ type spotifyUser struct {
 }
 
 func (p *Provider) currentUser(ctx context.Context, accessToken string) (spotifyUser, error) {
+	// Cosmetic (display name only) and best-effort, so keep it short.
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
 	var me spotifyUser
 	if err := p.get(ctx, accessToken, "/me", nil, &me); err != nil {
 		return spotifyUser{}, err
@@ -316,6 +323,7 @@ func (p *Provider) get(ctx context.Context, accessToken, path string, q url.Valu
 		req.Header.Set("Authorization", "Bearer "+accessToken)
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("User-Agent", userAgent)
+		req.Header.Set("App-Platform", "WebPlayer")
 
 		resp, err := p.http.Do(req)
 		if err != nil {
@@ -327,7 +335,7 @@ func (p *Provider) get(ctx context.Context, accessToken, path string, q url.Valu
 		switch {
 		case resp.StatusCode == http.StatusUnauthorized:
 			return musicsource.ErrNotConnected
-		case resp.StatusCode == http.StatusTooManyRequests && attempt == 0:
+		case resp.StatusCode == http.StatusTooManyRequests && attempt < 2:
 			wait := retryAfter(resp.Header.Get("Retry-After"))
 			select {
 			case <-ctx.Done():
@@ -352,8 +360,8 @@ func (p *Provider) get(ctx context.Context, accessToken, path string, q url.Valu
 
 func retryAfter(header string) time.Duration {
 	if n, err := strconv.Atoi(strings.TrimSpace(header)); err == nil && n > 0 {
-		if n > 10 {
-			n = 10
+		if n > 30 {
+			n = 30
 		}
 		return time.Duration(n) * time.Second
 	}

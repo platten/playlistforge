@@ -103,7 +103,29 @@ func TestCompleteRejectsEmptyAndBadToken(t *testing.T) {
 		t.Fatal("expected an error for an empty capture")
 	}
 	if _, err := p.Complete(context.Background(), `{"accessToken":"stale"}`); err == nil {
-		t.Fatal("expected an error when /me rejects the token")
+		t.Fatal("expected an error when /me rejects the token as unauthorized")
+	}
+}
+
+func TestCompleteToleratesRateLimitOnVerify(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/me", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "1")
+		w.WriteHeader(http.StatusTooManyRequests)
+	})
+	p := newTestProvider(t, mux)
+
+	s, err := p.Complete(context.Background(), `{"accessToken":"good"}`)
+	if err != nil {
+		t.Fatalf("a 429 on the cosmetic /me call must not fail sign-in: %v", err)
+	}
+	if s.DisplayName == "" || s.ExpiresAt.IsZero() {
+		t.Fatalf("session = %+v", s)
+	}
+	var tok token
+	_ = json.Unmarshal(s.Raw, &tok)
+	if tok.AccessToken != "good" {
+		t.Fatalf("token not stored: %+v", tok)
 	}
 }
 
