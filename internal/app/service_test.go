@@ -123,7 +123,7 @@ func TestGenerateListGetAndDelete(t *testing.T) {
 	if _, err := service.Generate(playlist.GenerateRequest{Prompt: "x", TrackCount: 20, Effort: playlist.EffortMedium}); !errors.Is(err, playlist.ErrInvalidPrompt) {
 		t.Fatalf("validation = %v", err)
 	}
-	job, err := service.Generate(playlist.GenerateRequest{Prompt: "warm evening", TrackCount: 20, Effort: playlist.EffortMedium, ReferenceIDs: []string{"reference"}})
+	job, err := service.Generate(playlist.GenerateRequest{Model: playlist.ModelGPTLuna, Prompt: "warm evening", TrackCount: 20, Effort: playlist.EffortLow, ReferenceIDs: []string{"reference"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestGenerateListGetAndDelete(t *testing.T) {
 		t.Fatalf("references = %d", gen.references)
 	}
 	item, err := service.Get(context.Background(), done.PlaylistID)
-	if err != nil || len(item.CurrentRevision.Tracks) != 20 {
+	if err != nil || len(item.CurrentRevision.Tracks) != 20 || item.CurrentRevision.Model != playlist.ModelGPTLuna || item.CurrentRevision.Effort != playlist.EffortLow {
 		t.Fatalf("item=%#v err=%v", item, err)
 	}
 	gen.replacement = &playlist.Track{ID: "duplicate", Title: "Song 1", Artists: []string{"Artist"}, Rationale: "Duplicate"}
@@ -147,6 +147,24 @@ func TestGenerateListGetAndDelete(t *testing.T) {
 		t.Fatalf("duplicate replacement = %#v", failed)
 	}
 	gen.replacement = nil
+	refined, err := service.Refine(done.PlaylistID, "more soul", playlist.EffortLow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job := await(t, service, refined.ID); job.Status != playlist.JobSucceeded {
+		t.Fatalf("refine=%+v", job)
+	}
+	replaced, err := service.Replace(done.PlaylistID, item.CurrentRevision.Tracks[0].ID, "", playlist.EffortLow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job := await(t, service, replaced.ID); job.Status != playlist.JobSucceeded {
+		t.Fatalf("replace=%+v", job)
+	}
+	item, err = service.Get(context.Background(), done.PlaylistID)
+	if err != nil || item.CurrentRevision.Model != playlist.ModelGPTLuna || item.CurrentRevision.Effort != playlist.EffortLow {
+		t.Fatalf("model not preserved: %+v, %v", item, err)
+	}
 	items, err := service.List(context.Background())
 	if err != nil || len(items) != 2 {
 		t.Fatalf("items=%d err=%v", len(items), err)

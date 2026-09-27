@@ -3,7 +3,7 @@
 **Turn a sentence into a researched playlist, review every track, and hand it to your streaming service.**
 
 Playlist Forge is a local, single-user desktop application. You describe the
-playlist you want; it uses OpenAI's Responses API (`gpt-5.6-sol`) with web search
+playlist you want; it uses OpenAI's Responses API (`gpt-6-sol` or `gpt-6-luna`) with web search
 to assemble a coherent, intentionally ordered tracklist of real recordings. You
 review and revise it track by track, then generate a temporary
 [Soundiiz](https://soundiiz.com) import link to transfer it to TIDAL, Qobuz,
@@ -107,7 +107,8 @@ Apple's [Safely open apps on your Mac](https://support.apple.com/en-us/102445).
 ## First run: connect an OpenAI API key
 
 Open **Settings**, paste a key into **API key**, and choose **Save key**.
-Playlist Forge validates that the key can access `gpt-5.6-sol` before storing it.
+Playlist Forge loads the available models from OpenAI and validates that the key can access
+`gpt-6-sol` or `gpt-6-luna` before storing it.
 
 To create a key:
 
@@ -170,7 +171,9 @@ Please try again later.*" — retry the action after a moment.
 ## Using Playlist Forge
 
 1. Describe the playlist, choose 20 / 30 / 40 / 50 / 60 / 100 tracks, and select
-   a reasoning effort (Medium is the default; higher efforts take longer).
+   a GPT-6 model and reasoning effort (Low through Maximum; Medium is the default).
+   Available Sol and Luna models are loaded from OpenAI using your key. Refining
+   or replacing tracks keeps that model; editing older or imported playlists uses GPT-6 Sol.
 2. Optionally open **Browse** and select any earlier playlists — generated here
    or imported from a streaming service — to seed the brief. They appear as
    removable chips on the composer.
@@ -232,8 +235,9 @@ edition.
 
 Each request's preview shows an estimated cost derived from reported input,
 cached-input, output, reasoning, and web-search usage. The embedded rate card is
-versioned `2026-09-01`: `$4.00` / M input tokens, `$0.40` / M cached input
-tokens, `$20.00` / M output tokens, and `$0.01` per web-search call.
+versioned `2026-09-27`: Sol uses `$2.00` / M input, `$0.20` / M cached input,
+and `$10.00` / M output tokens; Luna uses `$0.10`, `$0.01`, and `$0.50`
+respectively. Both include `$0.01` per web-search call.
 Search-result content counts toward input tokens.
 
 This is an estimate, not an invoice. Prices change, long-context or regional
@@ -381,7 +385,7 @@ artifacts (Linux on both an x86-64 and an ARM64 runner), writes
 | Symptom | Resolution |
 | --- | --- |
 | Credential store unavailable | Enable the config-file fallback in Settings, or configure Keychain / Credential Manager / Secret Service. |
-| OpenAI validation failed | Confirm the key is active, billing is enabled, and the project can access `gpt-5.6-sol`. |
+| OpenAI validation failed | Confirm the key is active, billing is enabled, and the project can access `gpt-6-sol` or `gpt-6-luna`. |
 | Operation is slow | After three seconds the app shows live progress and a Cancel button. Higher efforts and larger playlists take longer. |
 | Soundiiz link expired | Create a fresh handoff from the saved playlist preview. |
 | Streaming session expired | Open **Settings** (or use the banner) and choose **Reconnect** for that service. Imported playlists are kept; Browse shows **Reconnect** in place of **Reload** until you do. |

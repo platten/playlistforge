@@ -14,6 +14,7 @@ import (
 )
 
 type credentialStore interface {
+	Get() (string, error)
 	Status() credentials.Status
 	Set(string, bool) (credentials.Status, error)
 	Delete() error
@@ -21,6 +22,7 @@ type credentialStore interface {
 
 type keyValidator interface {
 	Validate(context.Context, string) error
+	Models(context.Context, string) ([]string, error)
 }
 
 // Config is the stable presentation contract shared with the React UI.
@@ -70,14 +72,14 @@ func New(ctx context.Context, service *app.Service, keys credentialStore, valida
 }
 
 // Config returns the immutable presentation contract: credential status, the
-// fixed model id, the selectable track counts and reasoning efforts, and the
+// default model id, the selectable track counts and reasoning efforts, and the
 // current rate card used for cost estimates.
 func (a *API) Config() Config {
 	return Config{
 		Credential:  a.keys.Status(),
 		Model:       playlist.ModelGPTSol,
 		TrackCounts: []int{20, 30, 40, 50, 60, 100},
-		Efforts:     []playlist.Effort{playlist.EffortMedium, playlist.EffortHigh, playlist.EffortXHigh, playlist.EffortMax},
+		Efforts:     []playlist.Effort{playlist.EffortLow, playlist.EffortMedium, playlist.EffortHigh, playlist.EffortXHigh, playlist.EffortMax},
 		Pricing: Pricing{
 			Version:               playlist.CurrentPricing.Version,
 			InputPerMillion:       playlist.CurrentPricing.InputPerMillion,
@@ -212,4 +214,13 @@ func (a *API) SyncSource(kind string) (playlist.Job, error) {
 // prevents that pair from being auto-merged again.
 func (a *API) UnlinkSource(playlistID, kind, externalID string) (playlist.Playlist, error) {
 	return a.service.UnlinkSource(a.ctx, playlistID, musicsource.Kind(kind), externalID)
+}
+
+// ListModels fetches supported models available to the configured API key.
+func (a *API) ListModels() ([]string, error) {
+	key, err := a.keys.Get()
+	if err != nil {
+		return nil, err
+	}
+	return a.validator.Models(a.ctx, key)
 }

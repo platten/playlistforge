@@ -22,7 +22,10 @@ import (
 type fakeKeys struct {
 	status credentials.Status
 	value  string
+	err    error
 }
+
+func (f *fakeKeys) Get() (string, error) { return f.value, f.err }
 
 func (f *fakeKeys) Status() credentials.Status { return f.status }
 func (f *fakeKeys) Set(value string, _ bool) (credentials.Status, error) {
@@ -32,6 +35,10 @@ func (f *fakeKeys) Set(value string, _ bool) (credentials.Status, error) {
 func (f *fakeKeys) Delete() error { f.value = ""; return nil }
 
 type fakeValidator struct{ err error }
+
+func (f fakeValidator) Models(context.Context, string) ([]string, error) {
+	return []string{"gpt-6-sol", "gpt-6-luna"}, f.err
+}
 
 func (f fakeValidator) Validate(context.Context, string) error { return f.err }
 
@@ -110,5 +117,23 @@ func TestStreamingMethods(t *testing.T) {
 	}
 	if _, err := api.SyncSource("tidal"); err == nil {
 		t.Fatal("sync without a session should fail")
+	}
+}
+
+func TestListModels(t *testing.T) {
+	keys := &fakeKeys{value: "key"}
+	api := New(context.Background(), nil, keys, fakeValidator{}, nil, nil)
+	models, err := api.ListModels()
+	if err != nil || len(models) != 2 {
+		t.Fatalf("models=%v err=%v", models, err)
+	}
+	keys.err = errors.New("no key")
+	if _, err := api.ListModels(); err == nil {
+		t.Fatal("expected missing key error")
+	}
+	keys.err = nil
+	api.validator = fakeValidator{err: errors.New("offline")}
+	if _, err := api.ListModels(); err == nil {
+		t.Fatal("expected provider error")
 	}
 }

@@ -27,11 +27,13 @@ describe("Wails API adapter", () => {
 
   it("delegates the complete UI contract to the bound Go service", async () => {
     await api.config();
+    await api.models();
     await api.saveKey("sk-test", false);
     await api.deleteKey();
     await api.playlists();
     await api.playlist("p");
     await api.generate({
+      model: "gpt-6-luna",
       prompt: "jazz",
       trackCount: 20,
       effort: "medium",
@@ -51,6 +53,7 @@ describe("Wails API adapter", () => {
     await api.unlinkSource("p", "qobuz", "ext-1");
 
     expect(byName).toHaveBeenCalledWith(`${PREFIX}Config`);
+    expect(byName).toHaveBeenCalledWith(`${PREFIX}ListModels`);
     expect(byName).toHaveBeenCalledWith(`${PREFIX}SaveKey`, "sk-test", false);
     expect(byName).toHaveBeenCalledWith(`${PREFIX}ListPlaylists`);
     expect(byName).toHaveBeenCalledWith(

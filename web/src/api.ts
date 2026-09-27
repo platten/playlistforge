@@ -10,11 +10,13 @@ import type { Config, ConnectionStatus, Effort, Job, Playlist } from "./types";
 /** The desktop backend surface, mirroring the exported methods on Go's `desktop.API`. */
 export interface BackendAPI {
   config(): Promise<Config>;
+  models(): Promise<string[]>;
   saveKey(key: string, allowPlaintext: boolean): Promise<Config["credential"]>;
   deleteKey(): Promise<void>;
   playlists(): Promise<Playlist[]>;
   playlist(id: string): Promise<Playlist>;
   generate(body: {
+    model: string;
     prompt: string;
     trackCount: number;
     effort: Effort;
@@ -73,6 +75,7 @@ async function invoke<T>(method: string, ...args: unknown[]): Promise<T> {
 // every call rejects there with the runtime's own error.
 export const api: BackendAPI = {
   config: () => invoke("Config"),
+  models: () => invoke("ListModels"),
   saveKey: (key, allowPlaintext) => invoke("SaveKey", key, allowPlaintext),
   deleteKey: () => invoke("DeleteKey"),
   playlists: () => invoke("ListPlaylists"),

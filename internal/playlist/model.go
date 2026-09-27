@@ -5,9 +5,9 @@ package playlist
 import "time"
 
 const (
-	// ModelGPTSol is intentionally fixed so generation, validation, and cost
-	// reporting always describe the same model contract.
-	ModelGPTSol = "gpt-5.6-sol"
+	// ModelGPTSol is the default model for new playlists.
+	ModelGPTSol  = "gpt-6-sol"
+	ModelGPTLuna = "gpt-6-luna"
 	// MinPromptLen and MaxPromptLen bound user-supplied playlist instructions.
 	MinPromptLen = 3
 	MaxPromptLen = 4000
@@ -20,6 +20,7 @@ var AllowedTrackCounts = map[int]struct{}{20: {}, 30: {}, 40: {}, 50: {}, 60: {}
 type Effort string
 
 const (
+	EffortLow    Effort = "low"
 	EffortMedium Effort = "medium"
 	EffortHigh   Effort = "high"
 	EffortXHigh  Effort = "xhigh"
@@ -29,7 +30,7 @@ const (
 // Valid reports whether the effort is supported by Playlist Forge.
 func (e Effort) Valid() bool {
 	switch e {
-	case EffortMedium, EffortHigh, EffortXHigh, EffortMax:
+	case EffortLow, EffortMedium, EffortHigh, EffortXHigh, EffortMax:
 		return true
 	default:
 		return false
@@ -149,6 +150,7 @@ type Playlist struct {
 
 // GenerateRequest contains validated user input for a new playlist job.
 type GenerateRequest struct {
+	Model        string   `json:"model"`
 	Prompt       string   `json:"prompt"`
 	TrackCount   int      `json:"trackCount"`
 	Effort       Effort   `json:"effort"`
@@ -187,4 +189,17 @@ type Job struct {
 	ErrorCode  string     `json:"errorCode,omitempty"`
 	StartedAt  *time.Time `json:"startedAt,omitempty"`
 	FinishedAt *time.Time `json:"finishedAt,omitempty"`
+}
+
+// SupportedModel limits generation to models with the required tools and schema support.
+func SupportedModel(model string) bool {
+	return model == ModelGPTSol || model == ModelGPTLuna
+}
+
+// GenerationModel upgrades older or imported revisions when they are edited.
+func GenerationModel(model string) string {
+	if SupportedModel(model) {
+		return model
+	}
+	return ModelGPTSol
 }

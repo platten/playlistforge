@@ -73,7 +73,7 @@ func generatedJSON(count int) string {
 
 func newTestClient(api *fakeAPI) *Client {
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	return &Client{keys: fakeKeys{key: "test-key"}, api: api, logger: zap.NewNop(), pricing: playlist.CurrentPricing, now: func() time.Time { return now }}
+	return &Client{keys: fakeKeys{key: "test-key"}, api: api, logger: zap.NewNop(), now: func() time.Time { return now }}
 }
 
 func TestSDKResponseContractAndConstructor(t *testing.T) {
@@ -227,8 +227,36 @@ func TestHelpers(t *testing.T) {
 		t.Fatalf("schema = %#v", schema)
 	}
 	client := newTestClient(&fakeAPI{})
-	usage := client.usage(nil, playlist.EffortMedium, time.Now())
+	usage := client.usage(nil, playlist.EffortMedium, time.Now(), playlist.ModelGPTSol)
 	if usage.Model != playlist.ModelGPTSol || usage.PricingVersion == "" {
 		t.Fatalf("usage = %#v", usage)
+	}
+}
+
+func TestLunaLowAcrossOperations(t *testing.T) {
+	api := &fakeAPI{response: responseWithText(t, generatedJSON(20))}
+	api.response.Model = "gpt-6-luna"
+	client := newTestClient(api)
+	generated, usage, err := client.Generate(context.Background(), playlist.GenerateRequest{Model: playlist.ModelGPTLuna, Prompt: "warm jazz", TrackCount: 20, Effort: playlist.EffortLow}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 900 uncached + 100 cached input, 500 output, and one search call.
+	if usage.EstimatedCostUSD != 0.010341 || usage.Model != playlist.ModelGPTLuna || api.params.Model != "gpt-6-luna" || api.params.Reasoning.Effort != "low" {
+		t.Fatalf("usage=%+v params=%+v", usage, api.params)
+	}
+	revision := playlist.Revision{Model: playlist.ModelGPTLuna, Tracks: generated.Tracks}
+	if _, _, err := client.Refine(context.Background(), revision, "more soul", playlist.EffortLow); err != nil {
+		t.Fatal(err)
+	}
+	if api.params.Model != "gpt-6-luna" {
+		t.Fatal("refine lost model")
+	}
+	api.response = responseWithText(t, `{"title":"New","artists":["Artist"]}`)
+	if _, _, err := client.Replace(context.Background(), revision, generated.Tracks[0].ID, "", playlist.EffortLow); err != nil {
+		t.Fatal(err)
+	}
+	if api.params.Model != "gpt-6-luna" || api.params.Reasoning.Effort != "low" {
+		t.Fatal("replace lost model or effort")
 	}
 }

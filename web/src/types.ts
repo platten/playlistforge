@@ -1,6 +1,6 @@
 // These interfaces mirror the Go JSON contract. Keep field names and optional
 // values synchronized with internal/playlist/model.go when the API evolves.
-export type Effort = "medium" | "high" | "xhigh" | "max";
+export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface Track {
   id: string;
