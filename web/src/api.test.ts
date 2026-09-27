@@ -32,6 +32,7 @@ describe("Wails API adapter", () => {
     await api.deleteKey();
     await api.playlists();
     await api.playlist("p");
+    await api.trackPreview("p", "t");
     await api.generate({
       model: "gpt-6-luna",
       prompt: "jazz",
@@ -56,6 +57,7 @@ describe("Wails API adapter", () => {
     expect(byName).toHaveBeenCalledWith(`${PREFIX}ListModels`);
     expect(byName).toHaveBeenCalledWith(`${PREFIX}SaveKey`, "sk-test", false);
     expect(byName).toHaveBeenCalledWith(`${PREFIX}ListPlaylists`);
+    expect(byName).toHaveBeenCalledWith(`${PREFIX}TrackPreview`, "p", "t");
     expect(byName).toHaveBeenCalledWith(
       `${PREFIX}ReplaceTrack`,
       "p",

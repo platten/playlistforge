@@ -63,11 +63,14 @@ func TestRepositoryLifecycle(t *testing.T) {
 	if _, err := repo.DeleteTrack(ctx, "p1", "missing"); err == nil {
 		t.Fatal("expected missing track")
 	}
+	if err := repo.SetSoundiiz(ctx, "p1", "https://soundiiz.com/go/import-playlist/old", time.Now().Add(time.Hour).Unix()); err != nil {
+		t.Fatal(err)
+	}
 	deleted, err := repo.DeleteTrack(ctx, "p1", updated.CurrentRevision.Tracks[0].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if deleted.RevisionCount != 3 || len(deleted.CurrentRevision.Tracks) != 1 || deleted.CurrentRevision.Tracks[0].Position != 1 {
+	if deleted.RevisionCount != 3 || len(deleted.CurrentRevision.Tracks) != 1 || deleted.CurrentRevision.Tracks[0].Position != 1 || deleted.SoundiizURL != nil || deleted.SoundiizExpires != nil {
 		t.Fatalf("bad delete: %#v", deleted)
 	}
 	if _, err := repo.DeleteTrack(ctx, "p1", deleted.CurrentRevision.Tracks[0].ID); err == nil {
@@ -139,5 +142,39 @@ func TestGetImportedShellHasNonNilTracklist(t *testing.T) {
 	}
 	if len(item.CurrentRevision.Tracks) != 0 {
 		t.Fatalf("expected no tracks, got %d", len(item.CurrentRevision.Tracks))
+	}
+}
+
+func TestRemovedSongSurvivesLinkedSourceReload(t *testing.T) {
+	ctx := context.Background()
+	repo := openTestRepo(t)
+	created, err := repo.Create(ctx, sampleRevision("r1", "p1"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := playlist.SourceInput{Kind: "tidal", ExternalID: "remote", ExternalURL: "https://tidal.com/playlist/remote", Title: "Remote title", Description: "Remote description"}
+	shellID, err := repo.CreateImported(ctx, source, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.MergeSourceLink(ctx, shellID, created.ID); err != nil {
+		t.Fatal(err)
+	}
+	edited, err := repo.DeleteTrack(ctx, created.ID, "t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.MarkSourceChanged(ctx, source, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SetImportedTracks(ctx, source.Kind, source.ExternalID, sampleRevision("", "").Tracks); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := repo.Get(ctx, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.CurrentRevision.Title != edited.CurrentRevision.Title || reloaded.CurrentRevision.ID != edited.CurrentRevision.ID || len(reloaded.CurrentRevision.Tracks) != 1 || reloaded.CurrentRevision.Tracks[0].Title != "Two" {
+		t.Fatalf("reload restored removed song: %+v", reloaded.CurrentRevision)
 	}
 }

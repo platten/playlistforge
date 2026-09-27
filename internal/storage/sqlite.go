@@ -128,7 +128,7 @@ func (r *Repository) AddRevision(ctx context.Context, playlistID string, revisio
 	if err := insertRevision(ctx, tx, revision, nil); err != nil {
 		return playlist.Playlist{}, err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE playlists SET current_revision_id=?, revision_count=?, updated_at=? WHERE id=?`,
+	_, err = tx.ExecContext(ctx, `UPDATE playlists SET current_revision_id=?, revision_count=?, updated_at=?, soundiiz_url=NULL, soundiiz_expires_at=NULL WHERE id=?`,
 		revision.ID, revision.Number, formatTime(revision.CreatedAt), playlistID)
 	if err != nil {
 		return playlist.Playlist{}, fmt.Errorf("activate revision: %w", err)

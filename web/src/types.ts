@@ -17,6 +17,12 @@ export interface Track {
   rationale: string;
 }
 
+export interface TrackPreview {
+  url: string;
+  title: string;
+  artist: string;
+}
+
 export interface Usage {
   responseId: string;
   model: string;

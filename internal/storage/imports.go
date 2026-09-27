@@ -91,9 +91,9 @@ func (r *Repository) MarkSourceChanged(ctx context.Context, in playlist.SourceIn
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var playlistID, revisionID string
-	err = tx.QueryRowContext(ctx, `SELECT p.id,p.current_revision_id FROM playlist_sources s JOIN playlists p ON p.id=s.playlist_id WHERE s.kind=? AND s.external_id=?`, in.Kind, in.ExternalID).
-		Scan(&playlistID, &revisionID)
+	var playlistID, revisionID, origin string
+	err = tx.QueryRowContext(ctx, `SELECT p.id,p.current_revision_id,p.origin FROM playlist_sources s JOIN playlists p ON p.id=s.playlist_id WHERE s.kind=? AND s.external_id=?`, in.Kind, in.ExternalID).
+		Scan(&playlistID, &revisionID, &origin)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -104,14 +104,16 @@ func (r *Repository) MarkSourceChanged(ctx context.Context, in playlist.SourceIn
 		nullString(in.ETag), nullTime(in.RemoteUpdatedAt), formatTime(syncedAt.UTC()), in.Kind, in.ExternalID); err != nil {
 		return fmt.Errorf("update source link: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE revisions SET title=?, description=? WHERE id=?`, in.Title, in.Description, revisionID); err != nil {
-		return fmt.Errorf("update imported revision: %w", err)
+	if origin == playlist.OriginImported {
+		if _, err := tx.ExecContext(ctx, `UPDATE revisions SET title=?, description=? WHERE id=?`, in.Title, in.Description, revisionID); err != nil {
+			return fmt.Errorf("update imported revision: %w", err)
+		}
 	}
 	return tx.Commit()
 }
 
-// SetImportedTracks replaces the single revision's tracks for a linked playlist
-// and marks the link hydrated.
+// SetImportedTracks refreshes imported snapshots and marks linked sources hydrated.
+// Locally generated playlists keep their edited tracklists.
 func (r *Repository) SetImportedTracks(ctx context.Context, kind, externalID string, tracks []playlist.Track) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -119,20 +121,22 @@ func (r *Repository) SetImportedTracks(ctx context.Context, kind, externalID str
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var revisionID string
-	err = tx.QueryRowContext(ctx, `SELECT p.current_revision_id FROM playlist_sources s JOIN playlists p ON p.id=s.playlist_id WHERE s.kind=? AND s.external_id=?`, kind, externalID).
-		Scan(&revisionID)
+	var revisionID, origin string
+	err = tx.QueryRowContext(ctx, `SELECT p.current_revision_id,p.origin FROM playlist_sources s JOIN playlists p ON p.id=s.playlist_id WHERE s.kind=? AND s.external_id=?`, kind, externalID).
+		Scan(&revisionID, &origin)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
 	if err != nil {
 		return fmt.Errorf("locate revision: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM tracks WHERE revision_id=?`, revisionID); err != nil {
-		return fmt.Errorf("clear imported tracks: %w", err)
-	}
-	if err := insertTracks(ctx, tx, revisionID, tracks); err != nil {
-		return err
+	if origin == playlist.OriginImported {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM tracks WHERE revision_id=?`, revisionID); err != nil {
+			return fmt.Errorf("clear imported tracks: %w", err)
+		}
+		if err := insertTracks(ctx, tx, revisionID, tracks); err != nil {
+			return err
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE playlist_sources SET tracks_fetched=1 WHERE kind=? AND external_id=?`, kind, externalID); err != nil {
 		return fmt.Errorf("mark hydrated: %w", err)

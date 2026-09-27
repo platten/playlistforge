@@ -9,6 +9,7 @@ import (
 
 	"playlistforge/internal/app"
 	"playlistforge/internal/credentials"
+	"playlistforge/internal/deezer"
 	"playlistforge/internal/musicsource"
 	"playlistforge/internal/playlist"
 )
@@ -55,6 +56,7 @@ type API struct {
 	service   *app.Service
 	keys      credentialStore
 	validator keyValidator
+	preview   func(context.Context, playlist.Track) (deezer.Preview, error)
 	// openURL hands a vetted URL to the host browser. It is injected (rather
 	// than called directly) so the package stays free of a Wails import and
 	// OpenExternalURL remains unit-testable.
@@ -68,7 +70,7 @@ type API struct {
 // New builds the desktop API. The caller registers the result as a Wails
 // service and supplies openURL and runAuth, wired to the host webview.
 func New(ctx context.Context, service *app.Service, keys credentialStore, validator keyValidator, openURL func(string), runAuth func(musicsource.AuthRequest) (string, error)) *API {
-	return &API{ctx: ctx, service: service, keys: keys, validator: validator, openURL: openURL, runAuth: runAuth}
+	return &API{ctx: ctx, service: service, keys: keys, validator: validator, preview: deezer.Lookup, openURL: openURL, runAuth: runAuth}
 }
 
 // Config returns the immutable presentation contract: credential status, the
@@ -108,6 +110,20 @@ func (a *API) ListPlaylists() ([]playlist.Playlist, error) { return a.service.Li
 
 // GetPlaylist returns one playlist with its active revision.
 func (a *API) GetPlaylist(id string) (playlist.Playlist, error) { return a.service.Get(a.ctx, id) }
+
+// TrackPreview looks up a short Deezer clip for a track in a saved playlist.
+func (a *API) TrackPreview(playlistID, trackID string) (deezer.Preview, error) {
+	item, err := a.service.Get(a.ctx, playlistID)
+	if err != nil {
+		return deezer.Preview{}, err
+	}
+	for _, track := range item.CurrentRevision.Tracks {
+		if track.ID == trackID && trackID != "" {
+			return a.preview(a.ctx, track)
+		}
+	}
+	return deezer.Preview{}, errors.New("track not found")
+}
 
 // Generate validates the request and queues a new playlist job, returning the
 // queued job immediately. The frontend polls GetJob for progress.

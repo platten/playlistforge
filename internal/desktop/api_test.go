@@ -10,13 +10,17 @@ package desktop
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 
 	"go.uber.org/zap"
 
 	"playlistforge/internal/app"
 	"playlistforge/internal/credentials"
+	"playlistforge/internal/deezer"
 	"playlistforge/internal/musicsource"
+	"playlistforge/internal/playlist"
+	"playlistforge/internal/storage"
 )
 
 type fakeKeys struct {
@@ -135,5 +139,39 @@ func TestListModels(t *testing.T) {
 	api.validator = fakeValidator{err: errors.New("offline")}
 	if _, err := api.ListModels(); err == nil {
 		t.Fatal("expected provider error")
+	}
+}
+
+func TestTrackPreviewOnlyLooksUpSavedTrack(t *testing.T) {
+	ctx := context.Background()
+	repo, err := storage.Open(filepath.Join(t.TempDir(), "playlists.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+	_, err = repo.Create(ctx, playlist.Revision{ID: "revision", PlaylistID: "playlist", Title: "Preview", TrackTarget: 1, Tracks: []playlist.Track{{ID: "track", Title: "Song", Artists: []string{"Artist"}}}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := app.New(ctx, repo, nil, nil, nil, nil, zap.NewNop())
+	t.Cleanup(svc.Close)
+	api := New(ctx, svc, &fakeKeys{}, fakeValidator{}, nil, nil)
+	calls := 0
+	api.preview = func(_ context.Context, track playlist.Track) (deezer.Preview, error) {
+		calls++
+		if track.Title != "Song" {
+			t.Fatalf("track=%+v", track)
+		}
+		return deezer.Preview{URL: "https://cdnt-preview.dzcdn.net/song.mp3"}, nil
+	}
+	got, err := api.TrackPreview("playlist", "track")
+	if err != nil || got.URL == "" || calls != 1 {
+		t.Fatalf("preview=%+v err=%v calls=%d", got, err, calls)
+	}
+	if _, err := api.TrackPreview("playlist", "missing"); err == nil || calls != 1 {
+		t.Fatalf("accepted missing track: %v", err)
+	}
+	if _, err := api.TrackPreview("missing", "track"); err == nil || calls != 1 {
+		t.Fatalf("accepted missing playlist: %v", err)
 	}
 }

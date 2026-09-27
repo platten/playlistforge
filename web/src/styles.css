@@ -1304,9 +1304,24 @@ dd {
   font-size: 0.62rem;
   letter-spacing: 0.03em;
 }
+.track-preview {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.7rem;
+  max-width: 320px;
+}
+.track-preview audio {
+  width: 100%;
+}
+.track-preview small,
+.track-main .preview-error {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+}
 .track-actions {
   display: flex;
   align-items: flex-start;
+  flex-wrap: wrap;
   gap: 0.4rem;
 }
 .track-actions button {
