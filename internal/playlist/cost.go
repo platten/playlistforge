@@ -16,10 +16,10 @@ var currentWebSearchPerCall = 0.01
 // CurrentPricing is the rate card used for new estimates. Historical Usage
 // keeps its PricingVersion so later price changes remain explainable.
 var CurrentPricing = Pricing{
-	Version:               "2026-09-01",
-	InputPerMillion:       4.00,
-	CachedInputPerMillion: 0.40,
-	OutputPerMillion:      20.00,
+	Version:               "2026-09-27",
+	InputPerMillion:       2.00,
+	CachedInputPerMillion: 0.20,
+	OutputPerMillion:      10.00,
 	WebSearchPerCall:      &currentWebSearchPerCall,
 }
 
@@ -42,4 +42,16 @@ func EstimateUsage(usage Usage, pricing Pricing) Usage {
 		usage.CreatedAt = time.Now().UTC()
 	}
 	return usage
+}
+
+// PricingForModel uses the requested alias even when OpenAI reports a dated snapshot.
+// Rates: https://developers.openai.com/api/docs/models/gpt-6-sol and gpt-6-luna.
+func PricingForModel(model string) Pricing {
+	pricing := CurrentPricing
+	if model == ModelGPTLuna {
+		pricing.InputPerMillion = 0.10
+		pricing.CachedInputPerMillion = 0.01
+		pricing.OutputPerMillion = 0.50
+	}
+	return pricing
 }

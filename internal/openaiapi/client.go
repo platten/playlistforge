@@ -77,17 +77,16 @@ func (s sdkAPI) Create(ctx context.Context, key string, params responses.Respons
 
 // Client implements playlist.Generator with the OpenAI Responses API.
 type Client struct {
-	keys    keySource
-	api     responseAPI
-	logger  *zap.Logger
-	pricing playlist.Pricing
-	now     func() time.Time
+	keys   keySource
+	api    responseAPI
+	logger *zap.Logger
+	now    func() time.Time
 }
 
 // New creates a production Client using the fixed OpenAI endpoint and current
 // versioned rate card.
 func New(keys keySource, logger *zap.Logger) *Client {
-	return &Client{keys: keys, api: sdkAPI{}, logger: logger, pricing: playlist.CurrentPricing, now: time.Now}
+	return &Client{keys: keys, api: sdkAPI{}, logger: logger, now: time.Now}
 }
 
 // Generate researches and creates a new playlist with an exact track count.
@@ -96,7 +95,7 @@ func (c *Client) Generate(ctx context.Context, request playlist.GenerateRequest,
 		return playlist.GeneratedPlaylist{}, playlist.Usage{}, err
 	}
 	input := buildGenerationPrompt(request, references)
-	return c.playlistResponse(ctx, input, request.TrackCount, request.Effort)
+	return c.playlistResponse(ctx, input, request.TrackCount, request.Effort, playlist.GenerationModel(request.Model))
 }
 
 // Refine returns a full replacement for revision while preserving its length.
@@ -110,7 +109,7 @@ func (c *Client) Refine(ctx context.Context, revision playlist.Revision, prompt 
 	}
 	current, _ := json.Marshal(revision)
 	input := fmt.Sprintf("Refine this playlist according to the user's request. Keep exactly %d tracks and return the full revised playlist.\nUSER REQUEST:\n%s\nCURRENT PLAYLIST JSON:\n%s", len(revision.Tracks), prompt, current)
-	return c.playlistResponse(ctx, input, len(revision.Tracks), effort)
+	return c.playlistResponse(ctx, input, len(revision.Tracks), effort, playlist.GenerationModel(revision.Model))
 }
 
 // Replace returns one candidate for trackID and preserves its position.
@@ -135,8 +134,8 @@ func (c *Client) Replace(ctx context.Context, revision playlist.Revision, trackI
 	current, _ := json.Marshal(revision)
 	input := fmt.Sprintf("Replace exactly one track in this playlist. Do not return the original recording or another track already in the playlist. User request: %s\nTRACK TO REPLACE:\n%s — %s\nPLAYLIST JSON:\n%s", request, strings.Join(target.Artists, ", "), target.Title, current)
 	started := c.now()
-	response, err := c.call(ctx, input, effort, trackSchema(), "playlist_track")
-	usage := c.usage(response, effort, started)
+	response, err := c.call(ctx, input, effort, playlist.GenerationModel(revision.Model), trackSchema(), "playlist_track")
+	usage := c.usage(response, effort, started, playlist.GenerationModel(revision.Model))
 	if err != nil {
 		return playlist.Track{}, usage, err
 	}
@@ -152,10 +151,10 @@ func (c *Client) Replace(ctx context.Context, revision playlist.Revision, trackI
 	return track, usage, nil
 }
 
-func (c *Client) playlistResponse(ctx context.Context, input string, count int, effort playlist.Effort) (playlist.GeneratedPlaylist, playlist.Usage, error) {
+func (c *Client) playlistResponse(ctx context.Context, input string, count int, effort playlist.Effort, model string) (playlist.GeneratedPlaylist, playlist.Usage, error) {
 	started := c.now()
-	response, err := c.call(ctx, input, effort, playlistSchema(count), "playlist")
-	usage := c.usage(response, effort, started)
+	response, err := c.call(ctx, input, effort, model, playlistSchema(count), "playlist")
+	usage := c.usage(response, effort, started, model)
 	if err != nil {
 		return playlist.GeneratedPlaylist{}, usage, err
 	}
@@ -172,7 +171,7 @@ func (c *Client) playlistResponse(ctx context.Context, input string, count int, 
 	return result, usage, nil
 }
 
-func (c *Client) call(ctx context.Context, input string, effort playlist.Effort, schema map[string]any, schemaName string) (*responses.Response, error) {
+func (c *Client) call(ctx context.Context, input string, effort playlist.Effort, model string, schema map[string]any, schemaName string) (*responses.Response, error) {
 	key, err := c.keys.Get()
 	if err != nil {
 		return nil, err
@@ -181,7 +180,7 @@ func (c *Client) call(ctx context.Context, input string, effort playlist.Effort,
 	params := responses.ResponseNewParams{
 		Instructions: openai.String(instructions),
 		Input:        responses.ResponseNewParamsInputUnion{OfString: openai.String(input)},
-		Model:        shared.ResponsesModel(playlist.ModelGPTSol),
+		Model:        shared.ResponsesModel(model),
 		Reasoning:    shared.ReasoningParam{Effort: shared.ReasoningEffort(effort)},
 		// Playlist prompts may be personal. Disable server-side response storage
 		// and bound both output and web-search activity for predictable spend.
@@ -203,8 +202,8 @@ func (c *Client) call(ctx context.Context, input string, effort playlist.Effort,
 	return response, nil
 }
 
-func (c *Client) usage(response *responses.Response, effort playlist.Effort, started time.Time) playlist.Usage {
-	usage := playlist.Usage{Model: playlist.ModelGPTSol, Effort: effort, CreatedAt: c.now().UTC(), ElapsedMillis: c.now().Sub(started).Milliseconds()}
+func (c *Client) usage(response *responses.Response, effort playlist.Effort, started time.Time, model string) playlist.Usage {
+	usage := playlist.Usage{Model: model, Effort: effort, CreatedAt: c.now().UTC(), ElapsedMillis: c.now().Sub(started).Milliseconds()}
 	if response != nil {
 		usage.ResponseID = response.ID
 		usage.Model = string(response.Model)
@@ -221,7 +220,7 @@ func (c *Client) usage(response *responses.Response, effort playlist.Effort, sta
 			}
 		}
 	}
-	return playlist.EstimateUsage(usage, c.pricing)
+	return playlist.EstimateUsage(usage, playlist.PricingForModel(model))
 }
 
 func buildGenerationPrompt(request playlist.GenerateRequest, references []playlist.Revision) string {

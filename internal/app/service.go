@@ -175,7 +175,7 @@ func (s *Service) Generate(request playlist.GenerateRequest) (playlist.Job, erro
 		}
 		s.logger.Debug("generated tracklist", zap.Any("tracks", generated.Tracks))
 		now := s.now().UTC()
-		revision := playlist.Revision{ID: uuid.NewString(), PlaylistID: uuid.NewString(), Title: generated.Title, Description: generated.Description, Prompt: request.Prompt, TrackTarget: request.TrackCount, Model: playlist.ModelGPTSol, Effort: request.Effort, Tracks: generated.Tracks, Usage: usage, CreatedAt: now}
+		revision := playlist.Revision{ID: uuid.NewString(), PlaylistID: uuid.NewString(), Title: generated.Title, Description: generated.Description, Prompt: request.Prompt, TrackTarget: request.TrackCount, Model: playlist.GenerationModel(request.Model), Effort: request.Effort, Tracks: generated.Tracks, Usage: usage, CreatedAt: now}
 		s.phase(jobID, "Saving playlist")
 		saved, err := s.repo.Create(ctx, revision, request.ReferenceIDs)
 		if err != nil {
@@ -204,7 +204,7 @@ func (s *Service) Refine(playlistID, prompt string, effort playlist.Effort) (pla
 		if err != nil {
 			return "", err
 		}
-		revision := playlist.Revision{Title: generated.Title, Description: generated.Description, Prompt: prompt, TrackTarget: len(generated.Tracks), Model: playlist.ModelGPTSol, Effort: effort, Tracks: generated.Tracks, Usage: usage, CreatedAt: s.now().UTC()}
+		revision := playlist.Revision{Title: generated.Title, Description: generated.Description, Prompt: prompt, TrackTarget: len(generated.Tracks), Model: playlist.GenerationModel(current.CurrentRevision.Model), Effort: effort, Tracks: generated.Tracks, Usage: usage, CreatedAt: s.now().UTC()}
 		s.phase(jobID, "Saving revision")
 		if _, err := s.repo.AddRevision(ctx, playlistID, revision); err != nil {
 			return "", err
@@ -257,6 +257,7 @@ func (s *Service) Replace(playlistID, trackID, prompt string, effort playlist.Ef
 		}
 		revision := current.CurrentRevision
 		revision.ID = ""
+		revision.Model = playlist.GenerationModel(current.CurrentRevision.Model)
 		revision.Prompt = "Replace track: " + strings.TrimSpace(prompt)
 		revision.Effort = effort
 		revision.Tracks = tracks

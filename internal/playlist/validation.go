@@ -8,12 +8,14 @@ import (
 )
 
 var (
+	// ErrInvalidModel indicates a model outside the supported catalog.
+	ErrInvalidModel = errors.New("model must be gpt-6-sol or gpt-6-luna")
 	// ErrInvalidPrompt indicates a description outside the supported length.
 	ErrInvalidPrompt = errors.New("playlist description must be between 3 and 4000 characters")
 	// ErrInvalidTrackCount indicates a size outside AllowedTrackCounts.
 	ErrInvalidTrackCount = errors.New("track count must be one of 20, 30, 40, 50, 60, or 100")
 	// ErrInvalidEffort indicates an unsupported reasoning effort.
-	ErrInvalidEffort = errors.New("reasoning effort must be medium, high, xhigh, or max")
+	ErrInvalidEffort = errors.New("reasoning effort must be low, medium, high, xhigh, or max")
 )
 
 // ValidateGenerateRequest enforces domain limits before queuing paid work.
@@ -27,6 +29,9 @@ func ValidateGenerateRequest(req GenerateRequest) error {
 	}
 	if !req.Effort.Valid() {
 		return ErrInvalidEffort
+	}
+	if req.Model != "" && !SupportedModel(req.Model) {
+		return ErrInvalidModel
 	}
 	if len(req.ReferenceIDs) > 10 {
 		return errors.New("at most 10 reference playlists may be selected")

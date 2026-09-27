@@ -609,6 +609,44 @@ function CreatePage({
   const [prompt, setPrompt] = useState("");
   const [trackCount, setTrackCount] = useState(30);
   const [effort, setEffort] = useState<Effort>("medium");
+  const [models, setModels] = useState<string[]>([]);
+  const [selectedModel, setSelectedModel] = useState("");
+  const [modelError, setModelError] = useState("");
+  const [modelReload, setModelReload] = useState(0);
+  const [loadingModels, setLoadingModels] = useState(true);
+  const model = models.includes(selectedModel)
+    ? selectedModel
+    : models[0] || "";
+
+  useEffect(() => {
+    if (!config?.credential.configured) return;
+    let active = true;
+    api.models().then(
+      (available) => {
+        if (!active) return;
+        setModels(available);
+        setModelError(
+          available.length
+            ? ""
+            : "No supported GPT-6 models are available for this key.",
+        );
+        setLoadingModels(false);
+      },
+      (error: unknown) => {
+        if (!active) return;
+        setModelError(
+          error instanceof Error
+            ? error.message
+            : "Could not load OpenAI models.",
+        );
+        setLoadingModels(false);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [config?.credential.configured, modelReload]);
+
   // Seeded from a Browse selection; the picker below can still add or remove.
   const [references, setReferences] = useState<string[]>(inspirationSeed);
 
@@ -621,7 +659,13 @@ function CreatePage({
     event.preventDefault();
     run(
       () =>
-        api.generate({ prompt, trackCount, effort, referenceIds: references }),
+        api.generate({
+          model,
+          prompt,
+          trackCount,
+          effort,
+          referenceIds: references,
+        }),
       (done) => navigate(`/playlists/${done.playlistId}`),
     );
   }
@@ -669,6 +713,42 @@ function CreatePage({
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="Late-night electronic soul for a rainy drive—warm bass, patient build, no festival drops…"
         />
+        <label>
+          Model
+          <select
+            value={model}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            disabled={loadingModels || !models.length}
+          >
+            {!models.length && (
+              <option value="">
+                {config?.credential.configured && loadingModels
+                  ? "Loading OpenAI models…"
+                  : "No models available"}
+              </option>
+            )}
+            {models.map((id) => (
+              <option key={id} value={id}>
+                {id === "gpt-6-sol" ? "GPT-6 Sol" : "GPT-6 Luna"}
+              </option>
+            ))}
+          </select>
+        </label>
+        {modelError && (
+          <div role="alert" className="notice">
+            <span>{modelError}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setLoadingModels(true);
+                setModelError("");
+                setModelReload((value) => value + 1);
+              }}
+            >
+              Retry models
+            </button>
+          </div>
+        )}
         <div className="field-row">
           <label>
             Tracks
@@ -689,6 +769,7 @@ function CreatePage({
               value={effort}
               onChange={(e) => setEffort(e.target.value as Effort)}
             >
+              <option value="low">Low</option>
               <option value="medium">Medium · recommended</option>
               <option value="high">High</option>
               <option value="xhigh">Extra high</option>
@@ -731,13 +812,17 @@ function CreatePage({
         <button
           className="button primary"
           type="submit"
-          disabled={!config?.credential.configured || prompt.trim().length < 3}
+          disabled={
+            !config?.credential.configured ||
+            loadingModels ||
+            !model ||
+            prompt.trim().length < 3
+          }
         >
           Forge playlist <span aria-hidden="true">→</span>
         </button>
         <p className="form-note">
-          Uses {config?.model || "gpt-5.6-sol"} and OpenAI web search. API
-          charges apply.
+          Uses {model || "GPT-6"} and OpenAI web search. API charges apply.
         </p>
       </form>
     </section>
@@ -1325,6 +1410,7 @@ function PlaylistPage({
                   value={effort}
                   onChange={(e) => setEffort(e.target.value as Effort)}
                 >
+                  <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
                   <option value="xhigh">Extra high</option>

@@ -14,7 +14,7 @@ import (
 )
 
 func TestEffortValid(t *testing.T) {
-	for _, effort := range []Effort{EffortMedium, EffortHigh, EffortXHigh, EffortMax} {
+	for _, effort := range []Effort{EffortLow, EffortMedium, EffortHigh, EffortXHigh, EffortMax} {
 		if !effort.Valid() {
 			t.Fatalf("expected %s to be valid", effort)
 		}
@@ -37,7 +37,8 @@ func TestValidateGenerateRequest(t *testing.T) {
 		{"short prompt", func(r *GenerateRequest) { r.Prompt = "  x " }, ErrInvalidPrompt},
 		{"long prompt", func(r *GenerateRequest) { r.Prompt = string(make([]rune, MaxPromptLen+1)) }, ErrInvalidPrompt},
 		{"count", func(r *GenerateRequest) { r.TrackCount = 25 }, ErrInvalidTrackCount},
-		{"effort", func(r *GenerateRequest) { r.Effort = "low" }, ErrInvalidEffort},
+		{"model", func(r *GenerateRequest) { r.Model = "unsupported" }, ErrInvalidModel},
+		{"effort", func(r *GenerateRequest) { r.Effort = "invalid" }, ErrInvalidEffort},
 		{"references", func(r *GenerateRequest) { r.ReferenceIDs = make([]string, 11) }, nil},
 	}
 	for _, tc := range cases {

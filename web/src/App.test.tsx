@@ -20,7 +20,7 @@ vi.mock("@wailsio/runtime", () => ({
 
 const config: Config = {
   credential: { configured: true, storage: "keyring" },
-  model: "gpt-5.6-sol",
+  model: "gpt-6-sol",
   trackCounts: [20, 30],
   efforts: ["medium", "high"],
   pricing: {
@@ -38,6 +38,7 @@ const config: Config = {
 function installBindings() {
   const bindings = {
     Config: vi.fn(() => Promise.resolve(config)),
+    ListModels: vi.fn(() => Promise.resolve(["gpt-6-sol", "gpt-6-luna"])),
     SaveKey: vi.fn(() => Promise.resolve(config.credential)),
     DeleteKey: vi.fn(() => Promise.resolve()),
     ListPlaylists: vi.fn((): Promise<unknown[]> => Promise.resolve([])),
@@ -113,6 +114,7 @@ describe("App", () => {
     fireEvent.change(prompt, {
       target: { value: "<img src=x onerror=alert(1)> jazz" },
     });
+    await screen.findByRole("option", { name: "GPT-6 Sol" });
     expect(prompt).toHaveValue("<img src=x onerror=alert(1)> jazz");
     expect(document.querySelector("img")).toBeNull();
     expect(
@@ -136,6 +138,7 @@ describe("App", () => {
     const prompt = await screen.findByLabelText(
       /what should this playlist feel/i,
     );
+    await screen.findByRole("option", { name: "GPT-6 Sol" });
     fireEvent.change(prompt, { target: { value: "rainy jazz" } });
     fireEvent.click(screen.getByRole("button", { name: /forge playlist/i }));
 
@@ -585,5 +588,57 @@ describe("App", () => {
     ).toBeEnabled();
     expect(screen.queryByRole("radio")).not.toBeInTheDocument();
     expect(screen.getByText(/choose your streaming service/i)).toBeVisible();
+  });
+});
+
+describe("OpenAI model selection", () => {
+  beforeEach(() => {
+    window.history.replaceState({}, "", "/");
+    vi.stubGlobal("scrollTo", vi.fn());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+  it("submits Luna with low reasoning", async () => {
+    const bindings = installBindings();
+    bindings.Generate.mockResolvedValue({
+      id: "job",
+      status: "cancelled",
+      phase: "Cancelled",
+    });
+    render(<App />);
+    await screen.findByRole("option", { name: "GPT-6 Luna" });
+    fireEvent.change(screen.getByLabelText("Model"), {
+      target: { value: "gpt-6-luna" },
+    });
+    fireEvent.change(screen.getByLabelText("Reasoning"), {
+      target: { value: "low" },
+    });
+    fireEvent.change(screen.getByLabelText(/what should this playlist feel/i), {
+      target: { value: "Warm jazz" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /forge playlist/i }));
+    await waitFor(() =>
+      expect(bindings.Generate).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "gpt-6-luna", effort: "low" }),
+      ),
+    );
+  });
+
+  it("retries discovery and selects the only available model", async () => {
+    const bindings = installBindings();
+    bindings.ListModels.mockRejectedValueOnce(new Error("Models unavailable"));
+    bindings.ListModels.mockResolvedValue(["gpt-6-luna"]);
+    render(<App />);
+    await screen.findByText("Models unavailable");
+    expect(
+      screen.getByRole("button", { name: /forge playlist/i }),
+    ).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Retry models" }));
+    await screen.findByRole("option", { name: "GPT-6 Luna" });
+    expect(screen.getByLabelText("Model")).toHaveValue("gpt-6-luna");
+    expect(
+      screen.queryByRole("option", { name: "GPT-6 Sol" }),
+    ).not.toBeInTheDocument();
   });
 });
