@@ -43,6 +43,13 @@ function installBindings() {
     DeleteKey: vi.fn(() => Promise.resolve()),
     ListPlaylists: vi.fn((): Promise<unknown[]> => Promise.resolve([])),
     GetPlaylist: vi.fn(() => Promise.resolve({})),
+    TrackPreview: vi.fn(() =>
+      Promise.resolve({
+        url: "https://cdnt-preview.dzcdn.net/test.mp3",
+        title: "One",
+        artist: "A",
+      }),
+    ),
     Generate: vi.fn(() => Promise.resolve({})),
     Refine: vi.fn(() => Promise.resolve({})),
     RemoveTrack: vi.fn(() => Promise.resolve({})),
@@ -380,6 +387,93 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Deep Focus", level: 1 }),
     ).toBeInTheDocument();
+  });
+
+  it("removes a disliked song while reviewing its preview", async () => {
+    const p = playlist("p-review", "Review mix", "generated");
+    const updated = {
+      ...p,
+      revisionCount: 2,
+      soundiizUrl: undefined,
+      currentRevision: {
+        ...p.currentRevision,
+        id: "r-after-removal",
+        tracks: [p.currentRevision.tracks[1]],
+      },
+    };
+    bindings.ListPlaylists.mockResolvedValue([p]);
+    bindings.GetPlaylist.mockResolvedValue(p);
+    bindings.RemoveTrack.mockResolvedValue(updated);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Browse" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Review mix/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Play preview of One" }),
+    );
+    await screen.findByLabelText("Deezer preview of One");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove One from playlist" }),
+    );
+    await waitFor(() =>
+      expect(bindings.RemoveTrack).toHaveBeenCalledWith("p-review", "t1"),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "One" })).toBeNull(),
+    );
+    expect(screen.queryByLabelText("Deezer preview of One")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Two" })).toBeInTheDocument();
+  });
+
+  it("plays one Deezer preview at a time, including imported playlists", async () => {
+    const p = playlist("p-preview", "Imported mix", "imported", "tidal");
+    bindings.ListPlaylists.mockResolvedValue([p]);
+    bindings.GetPlaylist.mockResolvedValue(p);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Browse" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Imported mix/ }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Play preview of One" }),
+    );
+    await waitFor(() =>
+      expect(bindings.TrackPreview).toHaveBeenCalledWith("p-preview", "t1"),
+    );
+    const first = await screen.findByLabelText("Deezer preview of One");
+    expect(first).toHaveAttribute(
+      "src",
+      "https://cdnt-preview.dzcdn.net/test.mp3",
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Play preview of Two" }),
+    );
+    await screen.findByLabelText("Deezer preview of Two");
+    expect(screen.queryByLabelText("Deezer preview of One")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Stop preview of Two" }),
+    );
+    expect(screen.queryByLabelText("Deezer preview of Two")).toBeNull();
+  });
+
+  it("shows when Deezer has no matching preview", async () => {
+    const p = playlist("p-preview", "Generated mix", "generated");
+    bindings.ListPlaylists.mockResolvedValue([p]);
+    bindings.GetPlaylist.mockResolvedValue(p);
+    bindings.TrackPreview.mockRejectedValue(
+      new Error("no matching Deezer preview is available"),
+    );
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Browse" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Generated mix/ }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Play preview of One" }),
+    );
+    expect(
+      await screen.findByText("no matching Deezer preview is available"),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Deezer preview of One")).toBeNull();
   });
 
   it("renders Browse for an un-hydrated import whose tracklist is absent", async () => {

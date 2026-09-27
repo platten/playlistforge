@@ -25,6 +25,7 @@ import {
   ReactNode,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { api, JobError, waitForJob } from "./api";
@@ -1301,13 +1302,64 @@ function PlaylistPage({
   const [item, setItem] = useState<Playlist | null>(null);
   const [refine, setRefine] = useState("");
   const [effort, setEffort] = useState<Effort>("medium");
+  const [preview, setPreview] = useState<{
+    playlistId: string;
+    revisionId: string;
+    trackId: string;
+    url: string;
+  } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState<{
+    playlistId: string;
+    revisionId: string;
+    trackId: string;
+  } | null>(null);
+  const [previewError, setPreviewError] = useState<{
+    playlistId: string;
+    revisionId: string;
+    trackId: string;
+    message: string;
+  } | null>(null);
+  const previewRequest = useRef(0);
   const load = useCallback(() => api.playlist(id).then(setItem), [id]);
+  async function togglePreview(track: Track) {
+    const request = ++previewRequest.current;
+    const revisionId = item?.currentRevision?.id ?? "";
+    setPreviewError(null);
+    setPreview(null);
+    if (
+      preview?.playlistId === id &&
+      preview?.revisionId === revisionId &&
+      preview.trackId === track.id
+    )
+      return;
+    setPreviewLoading({ playlistId: id, revisionId, trackId: track.id });
+    try {
+      const found = await api.trackPreview(id, track.id);
+      if (request === previewRequest.current)
+        setPreview({
+          playlistId: id,
+          revisionId,
+          trackId: track.id,
+          url: found.url,
+        });
+    } catch (reason) {
+      if (request === previewRequest.current)
+        setPreviewError({
+          playlistId: id,
+          revisionId,
+          trackId: track.id,
+          message: errorText(reason, "Could not load Deezer preview"),
+        });
+    } finally {
+      if (request === previewRequest.current) setPreviewLoading(null);
+    }
+  }
   useEffect(() => {
     load().catch((reason: unknown) =>
       setError(errorText(reason, "Could not load the playlist")),
     );
   }, [load, setError]);
-  if (!item)
+  if (!item || item.id !== id)
     return (
       <section className="page">
         <p role="status">Loading playlist…</p>
@@ -1372,6 +1424,35 @@ function PlaylistPage({
               key={track.id}
               track={track}
               readOnly={readOnly}
+              preview={
+                preview?.playlistId === id &&
+                preview.revisionId === revision.id &&
+                preview.trackId === track.id
+                  ? preview.url
+                  : null
+              }
+              previewLoading={
+                previewLoading?.playlistId === id &&
+                previewLoading.revisionId === revision.id &&
+                previewLoading.trackId === track.id
+              }
+              previewError={
+                previewError?.playlistId === id &&
+                previewError.revisionId === revision.id &&
+                previewError.trackId === track.id
+                  ? previewError.message
+                  : null
+              }
+              onPreview={() => togglePreview(track)}
+              onPreviewError={() => {
+                setPreview(null);
+                setPreviewError({
+                  playlistId: id,
+                  revisionId: revision.id,
+                  trackId: track.id,
+                  message: "Deezer could not play this preview.",
+                });
+              }}
               onRemove={async () => {
                 try {
                   const updated = await api.removeTrack(id, track.id);
@@ -1509,9 +1590,19 @@ function TrackRow({
   readOnly,
   onRemove,
   onReplace,
+  preview,
+  previewLoading,
+  previewError,
+  onPreview,
+  onPreviewError,
 }: {
   track: Track;
   readOnly?: boolean;
+  preview: string | null;
+  previewLoading: boolean;
+  previewError: string | null;
+  onPreview: () => void;
+  onPreviewError: () => void;
   onRemove?: () => void;
   onReplace?: (prompt: string) => void;
 }) {
@@ -1541,6 +1632,24 @@ function TrackRow({
           )}
         </p>
         <p className="rationale">{track.rationale}</p>
+        {preview && (
+          <div className="track-preview">
+            <audio
+              controls
+              autoPlay
+              preload="none"
+              src={preview}
+              onError={onPreviewError}
+              aria-label={`Deezer preview of ${track.title}`}
+            />
+            <small>Clip provided by Deezer</small>
+          </div>
+        )}
+        {previewError && (
+          <p className="preview-error" role="status">
+            {previewError}
+          </p>
+        )}
         {track.qualityNote && (
           <span className="quality-note">{track.qualityNote}</span>
         )}
@@ -1575,19 +1684,36 @@ function TrackRow({
           </form>
         )}
       </div>
-      {!readOnly && (
-        <div className="track-actions">
-          <button
-            onClick={() => setEditing(true)}
-            aria-label={`Replace ${track.title}`}
-          >
-            Replace
-          </button>
-          <button onClick={onRemove} aria-label={`Remove ${track.title}`}>
-            Remove
-          </button>
-        </div>
-      )}
+      <div className="track-actions">
+        <button
+          type="button"
+          onClick={onPreview}
+          disabled={previewLoading}
+          aria-label={`${preview ? "Stop" : "Play"} preview of ${track.title}`}
+        >
+          {previewLoading
+            ? "Finding…"
+            : preview
+              ? "Stop preview"
+              : "Play preview"}
+        </button>
+        {!readOnly && (
+          <>
+            <button
+              onClick={() => setEditing(true)}
+              aria-label={`Replace ${track.title}`}
+            >
+              Replace
+            </button>
+            <button
+              onClick={onRemove}
+              aria-label={`Remove ${track.title} from playlist`}
+            >
+              Remove from playlist
+            </button>
+          </>
+        )}
+      </div>
     </article>
   );
 }

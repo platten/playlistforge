@@ -178,9 +178,13 @@ Please try again later.*" — retry the action after a moment.
    or imported from a streaming service — to seed the brief. They appear as
    removable chips on the composer.
 3. Review the generated title, description, ordering, recording and version
-   notes, and per-track rationale.
-4. Remove tracks, request individual replacements, or refine the whole playlist
-   with another prompt. Each operation creates an immutable local revision.
+   notes, and per-track rationale. Use **Play preview** beside a track to hear
+   Deezer’s short clip when a matching recording is available; this also works
+   for imported playlists and needs no Deezer account.
+4. After a preview, choose **Remove from playlist** for songs you do not want,
+   request individual replacements, or refine the whole playlist with another
+   prompt. Each operation creates an immutable local revision and clears any
+   earlier Soundiiz handoff so the next transfer uses the revised tracklist.
 5. From the playlist preview, choose **Open Soundiiz handoff** to create a
    temporary public import link (valid for roughly 24 hours).
 

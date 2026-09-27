@@ -5,7 +5,14 @@
  * `waitForJob` polls it to a terminal state.
  */
 import { Call } from "@wailsio/runtime";
-import type { Config, ConnectionStatus, Effort, Job, Playlist } from "./types";
+import type {
+  Config,
+  ConnectionStatus,
+  Effort,
+  Job,
+  Playlist,
+  TrackPreview,
+} from "./types";
 
 /** The desktop backend surface, mirroring the exported methods on Go's `desktop.API`. */
 export interface BackendAPI {
@@ -15,6 +22,7 @@ export interface BackendAPI {
   deleteKey(): Promise<void>;
   playlists(): Promise<Playlist[]>;
   playlist(id: string): Promise<Playlist>;
+  trackPreview(playlistId: string, trackId: string): Promise<TrackPreview>;
   generate(body: {
     model: string;
     prompt: string;
@@ -80,6 +88,8 @@ export const api: BackendAPI = {
   deleteKey: () => invoke("DeleteKey"),
   playlists: () => invoke("ListPlaylists"),
   playlist: (id) => invoke("GetPlaylist", id),
+  trackPreview: (playlistId, trackId) =>
+    invoke("TrackPreview", playlistId, trackId),
   generate: (body) => invoke("Generate", body),
   refine: (id, prompt, effort) => invoke("Refine", id, prompt, effort),
   removeTrack: (playlistId, trackId) =>
